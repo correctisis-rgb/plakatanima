@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plaka & Sürücü Tanıma</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .plate{display:inline-flex;align-items:stretch;background:#f8fafc;color:#0f172a;border:3px solid #0f172a;border-radius:8px;overflow:hidden;font-weight:800;letter-spacing:.12em}
+  .plate b{background:#1d4ed8;color:#fff;font-size:.6rem;padding:4px 6px;display:flex;align-items:flex-end;letter-spacing:0}
+  .plate span{padding:4px 14px;font-size:1.6rem}
+  .inp{width:100%;background:#0f172a;border:1px solid #334155;border-radius:.5rem;padding:.55rem .75rem;color:#e2e8f0;outline:none}
+  .inp:focus{border-color:#38bdf8;box-shadow:0 0 0 2px #38bdf855}
+  .btn{display:inline-flex;align-items:center;gap:.5rem;padding:.55rem .95rem;border-radius:.5rem;font-weight:600;font-size:.875rem;transition:background .15s}
+  .btn:focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen">
+<div class="max-w-7xl mx-auto p-4 md:p-6">
+  <header class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div class="flex items-center gap-3">
+      <div class="w-11 h-11 rounded-xl bg-sky-500/15 text-sky-400 grid place-items-center text-xl"><i class="fa-solid fa-car-side"></i></div>
+      <div>
+        <h1 class="text-xl font-bold text-white">Plaka ve Sürücü Tanıma</h1>
+        <p class="text-sm text-slate-400">Tüm işlemler tarayıcınızda yapılır, veriler cihazınızda kalır.</p>
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <label class="btn bg-slate-800 hover:bg-slate-700 cursor-pointer"><i class="fa-solid fa-file-import text-emerald-400"></i>Excel yükle
+        <input id="xlsIn" type="file" accept=".xlsx,.xls" class="hidden"></label>
+      <button id="btnXlsOut" class="btn bg-slate-800 hover:bg-slate-700"><i class="fa-solid fa-file-export text-sky-400"></i>Excel indir</button>
+      <button id="btnTpl" class="btn bg-slate-800 hover:bg-slate-700"><i class="fa-solid fa-table text-amber-400"></i>Örnek şablon indir</button>
+    </div>
+  </header>
+
+  <div class="grid lg:grid-cols-2 gap-6">
+    <!-- SOL: tarama + sonuç -->
+    <div class="space-y-6">
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h2 class="font-semibold text-white mb-4"><i class="fa-solid fa-camera text-sky-400 mr-2"></i>Plakayı tara</h2>
+        <div class="flex flex-wrap gap-3">
+          <button id="btnCam" class="btn bg-sky-600 hover:bg-sky-500 text-white"><i class="fa-solid fa-video"></i>Kamerayı aç</button>
+          <label class="btn bg-slate-800 hover:bg-slate-700 cursor-pointer"><i class="fa-solid fa-image"></i>Fotoğraf yükle ve tara
+            <input id="imgIn" type="file" accept="image/*" class="hidden"></label>
+        </div>
+        <div id="status" class="mt-4 text-sm text-slate-400 min-h-[1.25rem]">Bir plaka fotoğrafı seçin veya kamerayı açın.</div>
+        <div id="bar" class="h-1.5 bg-slate-800 rounded mt-2 overflow-hidden hidden"><div id="barIn" class="h-full bg-sky-500 w-0"></div></div>
+
+        <!-- Önizleme (otomatik taranır) -->
+        <div id="cropWrap" class="hidden mt-4">
+          <img id="preview" alt="Taranan görsel" class="block max-w-full max-h-72 rounded-lg border border-slate-700">
+        </div>
+      </section>
+      <section id="result" aria-live="polite">
+        <div class="border border-dashed border-slate-700 rounded-2xl p-8 text-center text-slate-500">
+          <i class="fa-regular fa-id-card text-3xl mb-2"></i><p>Tarama sonucu burada görünecek.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- SAĞ: form, liste, log -->
+    <div class="space-y-6">
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h2 id="formTitle" class="font-semibold text-white mb-4"><i class="fa-solid fa-user-plus text-emerald-400 mr-2"></i>Sürücü ekle</h2>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <input id="fPlate" class="inp uppercase" placeholder="Plaka (34 BYL 575)" maxlength="12">
+          <input id="fName" class="inp" placeholder="Sürücü adı">
+          <input id="fPhone" class="inp" placeholder="Telefon">
+          <input id="fModel" class="inp" placeholder="Araç modeli">
+        </div>
+        <input id="fEditIdx" type="hidden" value="">
+        <div class="flex gap-2 mt-3">
+          <button id="btnAdd" class="btn bg-emerald-600 hover:bg-emerald-500 text-white"><i class="fa-solid fa-floppy-disk"></i>Kaydet</button>
+          <button id="btnCancelEdit" class="btn bg-slate-800 hover:bg-slate-700 hidden"><i class="fa-solid fa-xmark"></i>Vazgeç</button>
+        </div>
+      </section>
+
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-white"><i class="fa-solid fa-users text-sky-400 mr-2"></i>Kayıtlı sürücüler <span id="cnt" class="text-slate-500 font-normal"></span></h2>
+        </div>
+        <div class="overflow-x-auto max-h-64 overflow-y-auto">
+          <table class="w-full text-sm">
+            <thead class="text-slate-400 text-left sticky top-0 bg-slate-900"><tr><th class="py-2 pr-3">Plaka</th><th class="pr-3">Sürücü</th><th class="pr-3">Telefon</th><th class="pr-3">Model</th><th class="pr-3">İletişim</th><th class="text-right pr-2">Düzenle</th><th></th></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-white"><i class="fa-solid fa-clock-rotate-left text-amber-400 mr-2"></i>Geçmiş (son 20 okuma)</h2>
+          <button id="btnClr" class="text-xs text-slate-400 hover:text-white">Temizle</button>
+        </div>
+        <ul id="log" class="space-y-2 text-sm max-h-72 overflow-y-auto"></ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Kamera modalı -->
+<div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4">
+  <div class="bg-slate-900 border border-slate-700 rounded-2xl p-4 w-full max-w-2xl">
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="font-semibold text-white">Kamera</h3>
+      <button id="btnClose" class="text-slate-400 hover:text-white" aria-label="Kapat"><i class="fa-solid fa-xmark text-xl"></i></button>
+    </div>
+    <video id="video" class="w-full rounded-lg bg-black aspect-video object-cover" autoplay playsinline muted></video>
+    <p class="text-xs text-slate-400 mt-2">Plakayı çerçevenin ortasına alın ve yakından çekin.</p>
+    <button id="btnShot" class="btn bg-sky-600 hover:bg-sky-500 text-white mt-3"><i class="fa-solid fa-camera"></i>Çek ve tara</button>
+  </div>
+</div>
+
+<div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-sm px-4 py-2 rounded-lg shadow-lg hidden z-[60]"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const KEY = 'plk_drivers_v1', LKEY = 'plk_log_v1';
+const DEFAULTS = [{plate:'34BYL575', name:'Emre Alakuş', phone:'0532 123 45 67', model:'Renault Clio'}];
+
+function load(k, d){ try{ const v = JSON.parse(localStorage.getItem(k)); return Array.isArray(v) ? v : d; }catch(e){ return d; } }
+let drivers = load(KEY, DEFAULTS), logs = load(LKEY, []);
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(drivers)); localStorage.setItem(LKEY, JSON.stringify(logs)); }catch(e){} }
+
+const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = p => { const m = p.match(/^(\d{2})([A-Z]{1,3})(\d{2,4})$/); return m ? m.slice(1).join(' ') : p; };
+const plateHtml = p => `<div class="plate"><b><i class="fa-solid fa-star-of-life"></i>&nbsp;TR</b><span>${esc(fmt(p))}</span></div>`;
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 2600); }
+
+/* ---------- İletişim (ara / mesaj / whatsapp) ---------- */
+function telHref(phone){ return String(phone || '').replace(/[^\d+]/g, ''); }
+function waHref(phone){
+  let d = String(phone || '').replace(/\D/g, '');
+  if(!d) return '';
+  if(d.startsWith('0')) d = '90' + d.slice(1);
+  else if(d.startsWith('90') && d.length > 10) { /* already has country code */ }
+  else if(!d.startsWith('90')) d = '90' + d;
+  return `https://wa.me/${d}`;
+}
+function contactBtns(phone, size){
+  if(!String(phone || '').trim()) return '';
+  const t = telHref(phone), sz = size === 'sm' ? '!py-1 !px-2 text-xs' : '';
+  return `<span class="inline-flex gap-1.5" onclick="event.stopPropagation()">
+    <a href="tel:${esc(t)}" class="btn bg-emerald-600 hover:bg-emerald-500 text-white ${sz}" title="Ara" aria-label="Ara"><i class="fa-solid fa-phone"></i></a>
+    <a href="sms:${esc(t)}" class="btn bg-sky-600 hover:bg-sky-500 text-white ${sz}" title="Mesaj gönder" aria-label="Mesaj gönder"><i class="fa-regular fa-comment-dots"></i></a>
+    <a href="${esc(waHref(phone))}" target="_blank" rel="noopener" class="btn bg-green-600 hover:bg-green-500 text-white ${sz}" title="WhatsApp'tan yaz" aria-label="WhatsApp'tan yaz"><i class="fa-brands fa-whatsapp"></i></a>
+  </span>`;
+}
+
+/* ---------- Türkiye plaka algoritması ---------- */
+const RX = /^(0[1-9]|[1-7]\d|8[01])([A-PR-VYZ]{1,3})(\d{2,4})$/;   // il 01-81 + 1-3 harf (Q,W,X yok) + 2-4 rakam
+const FIX = {O:'0',Q:'0',D:'0',I:'1',L:'1',Z:'2',E:'3',A:'4',S:'5',G:'6',T:'7',B:'8'};
+const isStd = p => { const m = p.match(RX), L = m[2].length, D = m[3].length; return (L < 3 && D >= 3) || (L === 3 && D <= 3); };
+function extractAll(text){
+  const up = text.toUpperCase(), out = {};
+  for(const line of up.split(/\n/).concat([up])){
+    const s = line.replace(/[^A-Z0-9]/g, '');
+    for(let i = 0; i <= s.length - 5; i++){
+      for(let l = 5; l <= 9 && i + l <= s.length; l++){
+        const sub = s.substr(i, l); let sure = 0;
+        const head = [...sub.slice(0, 2)].map(c => /\d/.test(c) ? (sure++, c) : (FIX[c] || c)).join('');
+        const cand = head + sub.slice(2);
+        if(RX.test(cand)){
+          const sc = sure * 10 + l + (isStd(cand) ? 25 : 0);
+          if(!(cand in out) || sc > out[cand]) out[cand] = sc;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/* ---------- OCR ---------- */
+let worker = null, busy = false;
+function setStatus(t, pct){
+  $('status').textContent = t;
+  $('bar').classList.toggle('hidden', pct == null);
+  if(pct != null) $('barIn').style.width = pct + '%';
+}
+async function getWorker(){
+  if(worker) return worker;
+  setStatus('OCR motoru yükleniyor...', 5);
+  worker = await Tesseract.createWorker('eng');
+  await worker.setParameters({tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ '});
+  return worker;
+}
+async function ocr(w, cv, psm){
+  await w.setParameters({tessedit_pageseg_mode: String(psm)});
+  return (await w.recognize(cv)).data.text || '';
+}
+function prepare(src, contrast){
+  const w = src.videoWidth || src.naturalWidth || src.width, h = src.videoHeight || src.naturalHeight || src.height;
+  // Küçük/uzaktan çekilmiş görselleri daha çok büyüt, büyük/yakın çekimleri makul boyuta indir.
+  const k = Math.min(3, Math.max(0.35, 1600 / Math.max(w, h))), c = document.createElement('canvas');
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const ctx = c.getContext('2d');
+  ctx.filter = `grayscale(1) contrast(${contrast || 1.5})`;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+/* Plaka bölgesi bulucu: dikey kenar yoğunluğu + en/boy oranı */
+function findBoxes(cv){
+  const s = Math.min(1, 640 / cv.width), w = Math.round(cv.width * s), h = Math.round(cv.height * s);
+  const t = document.createElement('canvas'); t.width = w; t.height = h;
+  const x = t.getContext('2d', {willReadFrequently: true}); x.drawImage(cv, 0, 0, w, h);
+  const px = x.getImageData(0, 0, w, h).data, g = new Uint8Array(w * h);
+  for(let i = 0; i < w * h; i++) g[i] = px[i*4] * .3 + px[i*4+1] * .59 + px[i*4+2] * .11;
+  const B = 4, cw = Math.ceil(w / B), ch = Math.ceil(h / B), n = new Float32Array(cw * ch);
+  for(let y = 1; y < h - 1; y++) for(let i = 1; i < w - 1; i++)
+    if(Math.abs(g[y*w+i+1] - g[y*w+i-1]) > 60) n[((y / B) | 0) * cw + ((i / B) | 0)]++;
+  const a = new Uint8Array(cw * ch);
+  for(let i = 0; i < a.length; i++){ const d = n[i] / (B * B); a[i] = d > .1 && d < .55 ? 1 : 0; }
+  for(let y = 0; y < ch; y++){ let last = -9;
+    for(let i = 0; i < cw; i++) if(a[y*cw+i]){ if(i - last > 1 && i - last <= 4) for(let j = last + 1; j < i; j++) a[y*cw+j] = 1; last = i; } }
+  const seen = new Uint8Array(cw * ch), boxes = [], f = B / s;
+  for(let st = 0; st < a.length; st++){
+    if(!a[st] || seen[st]) continue;
+    const q = [st]; seen[st] = 1; let x0 = cw, y0 = ch, x1 = 0, y1 = 0, cnt = 0;
+    while(q.length){
+      const c = q.pop(), cx = c % cw, cy = (c / cw) | 0; cnt++;
+      x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); y0 = Math.min(y0, cy); y1 = Math.max(y1, cy);
+      for(const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx = cx + dx, ny = cy + dy; if(nx < 0 || ny < 0 || nx >= cw || ny >= ch) continue;
+        const k = ny * cw + nx; if(a[k] && !seen[k]){ seen[k] = 1; q.push(k); }
+      }
+    }
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1, ar = bw / bh, fill = cnt / (bw * bh);
+    if(bw >= 6 && bh >= 2 && bw <= cw && ar >= 1.6 && ar <= 9 && fill > .28){
+      const px_ = bw * f * .12, py_ = bh * f * .35;
+      const bx = Math.max(0, x0 * f - px_), by = Math.max(0, y0 * f - py_);
+      boxes.push({score: fill * Math.sqrt(bw * bh), x: bx, y: by,
+        w: Math.min(cv.width - bx, bw * f + 2 * px_), h: Math.min(cv.height - by, bh * f + 2 * py_)});
+    }
+  }
+  return boxes.sort((p, q) => q.score - p.score).slice(0, 6);
+}
+function cropCanvas(src, b, target, contrast){
+  const k = Math.max(1, Math.min(10, target / b.w)), pad = 16, c = document.createElement('canvas');
+  c.width = Math.round(b.w * k) + pad * 2; c.height = Math.round(b.h * k) + pad * 2;
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  x.imageSmoothingQuality = 'high'; x.filter = `grayscale(1) contrast(${contrast || 1.8})`;
+  x.drawImage(src, b.x, b.y, b.w, b.h, pad, pad, c.width - pad * 2, c.height - pad * 2);
+  return c;
+}
+async function scan(src){
+  if(busy) return;
+  busy = true;
+  const found = {}; let raw = '';
+  const inDb = p => drivers.some(d => norm(d.plate) === p);
+  const add = (text, kind) => {
+    raw += text.trim() + ' | ';
+    const all = extractAll(text);
+    for(const p in all){
+      if(kind !== 'crop' && !isStd(p)) continue;            // bölge dışı sonuçlarda sadece standart format
+      const sc = all[p] + (kind === 'crop' ? 20 : 0) + (inDb(p) ? 100 : 0);
+      found[p] = (found[p] || 0) + sc;   // birden çok denemede aynı plaka çıkarsa puanı birikir (oy birliği)
+    }
+  };
+  try{
+    const canvas = prepare(src);
+    $('preview').src = canvas.toDataURL('image/jpeg', .7);
+    $('preview').classList.remove('hidden');
+    const w = await getWorker();
+
+    // 1) Hızlı geçiş: plaka kareyi dolduruyorsa (yakından çekim) doğrudan tek satır olarak dene.
+    setStatus('Plaka kontrol ediliyor...', 8);
+    add(await ocr(w, canvas, 7), 'full');
+    if(!Object.keys(found).length){
+      const hc = prepare(src, 2.3);
+      add(await ocr(w, hc, 7), 'full');
+    }
+
+    // 2) Bölge tespiti: plakanın olası olduğu dikdörtgenleri bul, her birini birkaç ayarla dene ve oyla.
+    if(!Object.keys(found).length){
+      setStatus('Plaka bölgesi aranıyor...', 15);
+      const boxes = findBoxes(canvas);
+      for(let i = 0; i < boxes.length && !Object.keys(found).length; i++){
+        setStatus(`Aday bölge ${i + 1}/${boxes.length} okunuyor...`, 18 + i * 7);
+        for(const [psm, contrast] of [[7, 1.3], [7, 1.8], [7, 2.6], [6, 2.0], [8, 2.4]]){
+          const cv = cropCanvas(canvas, boxes[i], 760, contrast);
+          add(await ocr(w, cv, psm), 'crop');
+        }
+      }
+    }
+
+    // 3) Son çare: tüm görüntüyü blok olarak ve parçalara bölerek dene (uzak/eğik çekimler için).
+    if(!Object.keys(found).length){
+      setStatus('Tüm görüntü taranıyor...', 55);
+      add(await ocr(w, canvas, 6), 'full');
+      const tw = canvas.width * .4, th = canvas.height * .4;
+      for(let r = 0; r < 3 && !Object.keys(found).length; r++) for(let c = 0; c < 3 && !Object.keys(found).length; c++){
+        setStatus(`Görüntü parçası ${r * 3 + c + 1}/9 taranıyor...`, 60 + (r * 3 + c) * 4);
+        const cv = cropCanvas(canvas, {x: c * canvas.width * .3, y: r * canvas.height * .3, w: tw, h: th}, 1000);
+        add(await ocr(w, cv, 11), 'tile');
+      }
+    }
+
+    setStatus('Tarama tamamlandı.', null);
+    const best = Object.keys(found).sort((p, q) => found[q] - found[p])[0] || null;
+    handleResult(best, raw);
+  }catch(e){
+    console.error(e);
+    setStatus('Hata: OCR çalıştırılamadı. İnternet bağlantısını kontrol edin.', null);
+  }finally{ busy = false; }
+}
+
+/* ---------- Sonuç kartı ---------- */
+function handleResult(plate, raw){
+  const box = $('result');
+  if(!plate){
+    box.innerHTML = `<div class="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
+      <div class="font-semibold text-amber-300 mb-1"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Geçerli plaka bulunamadı</div>
+      <p class="text-sm text-slate-300">Plakayı daha yakından ve düz açıyla çekip tekrar deneyin.</p>
+      <p class="text-xs text-slate-500 mt-2 break-words">Okunan ham metin: ${esc(raw.trim().slice(0, 120)) || '(boş)'}</p></div>`;
+    addLog(null, false); return;
+  }
+  const idx = drivers.findIndex(x => norm(x.plate) === plate);
+  const d = idx >= 0 ? drivers[idx] : null;
+  if(d){
+    box.innerHTML = `<div class="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">${plateHtml(plate)}
+        <span class="flex items-center gap-2">
+          <span class="bg-emerald-500 text-slate-950 font-bold text-sm px-3 py-1.5 rounded-full"><i class="fa-solid fa-circle-check mr-1"></i>Giriş onaylandı</span>
+          <button class="btn bg-slate-800 hover:bg-slate-700" onclick="editDriver(${idx})"><i class="fa-solid fa-pen"></i>Düzenle</button>
+        </span></div>
+      <dl class="grid sm:grid-cols-3 gap-4 text-sm">
+        <div><dt class="text-slate-400">Sürücü adı</dt><dd class="text-white font-semibold">${esc(d.name)}</dd></div>
+        <div><dt class="text-slate-400">Telefon</dt><dd class="text-white font-semibold flex items-center gap-2 flex-wrap"><span>${esc(d.phone) || '-'}</span>${contactBtns(d.phone)}</dd></div>
+        <div><dt class="text-slate-400">Araç modeli</dt><dd class="text-white font-semibold">${esc(d.model) || '-'}</dd></div>
+      </dl></div>`;
+  }else{
+    box.innerHTML = `<div class="rounded-2xl border border-red-500/40 bg-red-500/10 p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">${plateHtml(plate)}
+        <span class="bg-red-500 text-white font-bold text-sm px-3 py-1.5 rounded-full"><i class="fa-solid fa-ban mr-1"></i>Kayıt bulunamadı</span></div>
+      <p class="text-sm text-slate-300 mb-3">Bu plaka sürücü listesinde yok.</p>
+      <button class="btn bg-red-600 hover:bg-red-500 text-white" onclick="fillForm('${plate}')"><i class="fa-solid fa-plus"></i>Bu plakayı sisteme kaydet</button></div>`;
+  }
+  addLog(plate, !!d);
+}
+function fillForm(plate){
+  $('fPlate').value = fmt(plate);
+  $('fPlate').scrollIntoView({behavior:'smooth', block:'center'});
+  $('fName').focus();
+}
+
+/* ---------- Log ---------- */
+function addLog(plate, ok){
+  logs.unshift({time: new Date().toLocaleTimeString('tr-TR'), plate, ok});
+  logs = logs.slice(0, 20); save(); renderLog();
+}
+function renderLog(){
+  $('log').innerHTML = logs.length ? logs.map(l => `
+    <li class="flex items-center justify-between bg-slate-800/60 rounded-lg px-3 py-2">
+      <span class="text-slate-400 tabular-nums">${esc(l.time)}</span>
+      <span class="font-semibold text-white">${l.plate ? esc(fmt(l.plate)) : 'Okunamadı'}</span>
+      <span class="${l.plate ? (l.ok ? 'text-emerald-400' : 'text-red-400') : 'text-amber-400'}">${l.plate ? (l.ok ? 'Onaylandı' : 'Kayıtsız') : 'Geçersiz'}</span>
+    </li>`).join('') : '<li class="text-slate-500">Henüz okuma yapılmadı.</li>';
+}
+
+/* ---------- Sürücü listesi ---------- */
+function renderDrivers(){
+  $('cnt').textContent = `(${drivers.length})`;
+  $('tbody').innerHTML = drivers.length ? drivers.map((d, i) => `
+    <tr class="border-t border-slate-800">
+      <td class="py-2 pr-3 font-semibold text-white whitespace-nowrap">${esc(fmt(norm(d.plate)))}</td>
+      <td class="pr-3">${esc(d.name)}</td><td class="pr-3 whitespace-nowrap">${esc(d.phone)}</td><td class="pr-3">${esc(d.model)}</td>
+      <td class="pr-3 whitespace-nowrap">${contactBtns(d.phone, 'sm')}</td>
+      <td class="text-right pr-2"><button class="text-slate-500 hover:text-sky-400" onclick="editDriver(${i})" aria-label="Düzenle"><i class="fa-solid fa-pen"></i></button></td>
+      <td class="text-right"><button class="text-slate-500 hover:text-red-400" onclick="delDriver(${i})" aria-label="Sil"><i class="fa-solid fa-trash"></i></button></td>
+    </tr>`).join('') : '<tr><td colspan="7" class="py-4 text-slate-500">Kayıt yok. Form ile ekleyin veya Excel yükleyin.</td></tr>';
+}
+function delDriver(i){
+  if(String($('fEditIdx').value) === String(i)) exitEditMode();
+  drivers.splice(i, 1); save(); renderDrivers();
+}
+function upsert(d){
+  const i = drivers.findIndex(x => norm(x.plate) === norm(d.plate));
+  if(i >= 0) drivers[i] = d; else drivers.push(d);
+}
+function editDriver(i){
+  const d = drivers[i]; if(!d) return;
+  $('fEditIdx').value = i;
+  $('fPlate').value = fmt(norm(d.plate));
+  $('fName').value = d.name || '';
+  $('fPhone').value = d.phone || '';
+  $('fModel').value = d.model || '';
+  $('formTitle').innerHTML = '<i class="fa-solid fa-pen text-sky-400 mr-2"></i>Sürücüyü düzenle';
+  $('btnAdd').innerHTML = '<i class="fa-solid fa-floppy-disk"></i>Güncelle';
+  $('btnCancelEdit').classList.remove('hidden');
+  $('fPlate').scrollIntoView({behavior:'smooth', block:'center'});
+  $('fName').focus();
+}
+function exitEditMode(){
+  $('fEditIdx').value = '';
+  $('formTitle').innerHTML = '<i class="fa-solid fa-user-plus text-emerald-400 mr-2"></i>Sürücü ekle';
+  $('btnAdd').innerHTML = '<i class="fa-solid fa-floppy-disk"></i>Kaydet';
+  $('btnCancelEdit').classList.add('hidden');
+  ['fPlate','fName','fPhone','fModel'].forEach(id => $(id).value = '');
+}
+$('btnCancelEdit').onclick = exitEditMode;
+$('btnAdd').onclick = () => {
+  const plate = norm($('fPlate').value), name = $('fName').value.trim();
+  if(!RX.test(plate)) return toast('Geçersiz plaka. Örnek: 34 BYL 575');
+  if(!name) return toast('Sürücü adını girin.');
+  const editIdx = $('fEditIdx').value;
+  const newRec = {plate, name, phone: $('fPhone').value.trim(), model: $('fModel').value.trim()};
+  if(editIdx !== ''){
+    const i = Number(editIdx);
+    // Aynı plakaya sahip başka bir kayıt varsa (plaka değiştirildiyse) onunla çakışmayı önle
+    const dupIdx = drivers.findIndex((x, j) => j !== i && norm(x.plate) === plate);
+    if(dupIdx >= 0) drivers.splice(dupIdx, 1);
+    if(drivers[i]) drivers[i] = newRec; else drivers.push(newRec);
+    toast('Sürücü güncellendi.');
+  }else{
+    upsert(newRec);
+    toast('Sürücü kaydedildi.');
+  }
+  save(); renderDrivers();
+  exitEditMode();
+};
+
+/* ---------- Excel ---------- */
+const fold = s => String(s).toLowerCase().replace(/ı/g,'i').replace(/ç/g,'c').replace(/ğ/g,'g').replace(/ö/g,'o').replace(/ş/g,'s').replace(/ü/g,'u').replace(/[^a-z]/g,'');
+function pick(row, names){
+  for(const k of Object.keys(row)){ const f = fold(k); if(names.some(n => f.includes(n))) return String(row[k]).trim(); }
+  return '';
+}
+$('xlsIn').onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'array'});
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+      let n = 0;
+      rows.forEach(row => {
+        const plate = norm(pick(row, ['plaka','plate']));
+        if(!plate) return;
+        upsert({plate, name: pick(row, ['surucu','adsoyad','isim','name','driver']), phone: pick(row, ['telefon','phone','gsm','tel']), model: pick(row, ['model','arac','marka'])});
+        n++;
+      });
+      save(); renderDrivers(); toast(`${n} kayıt içe aktarıldı.`);
+    }catch(err){ toast('Excel dosyası okunamadı.'); }
+    e.target.value = '';
+  };
+  r.readAsArrayBuffer(f);
+};
+function writeXlsx(rows, name){
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:14},{wch:24},{wch:18},{wch:22}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sürücüler');
+  XLSX.writeFile(wb, name);
+}
+const toRow = d => ({'Plaka': fmt(norm(d.plate)), 'Sürücü Adı': d.name, 'Telefon': d.phone, 'Araç Modeli': d.model});
+$('btnXlsOut').onclick = () => drivers.length ? writeXlsx(drivers.map(toRow), 'suruculer.xlsx') : toast('İndirilecek kayıt yok.');
+$('btnTpl').onclick = () => writeXlsx([
+  {'Plaka':'34 BYL 575','Sürücü Adı':'Emre Alakuş','Telefon':'0532 123 45 67','Araç Modeli':'Renault Clio'},
+  {'Plaka':'06 ABC 123','Sürücü Adı':'Örnek Sürücü','Telefon':'0555 000 00 00','Araç Modeli':'Fiat Egea'}
+], 'ornek_sablon.xlsx');
+
+/* ---------- Fotoğraf & kamera: seçilince direkt otomatik tara ---------- */
+let rawSrc = null;
+
+function showPreview(src){
+  rawSrc = src;
+  const url = src.toDataURL ? src.toDataURL('image/jpeg', 0.9) : src.src;
+  $('preview').src = url;
+  $('preview').classList.remove('hidden');
+  $('cropWrap').classList.remove('hidden');
+}
+function captureColorFrame(v){
+  const c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  return c;
+}
+
+$('imgIn').onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const img = new Image();
+  img.onload = () => { showPreview(img); scan(img); };
+  img.onerror = () => toast('Görsel açılamadı.');
+  img.src = URL.createObjectURL(f);
+  e.target.value = '';
+};
+
+let stream = null;
+function closeCam(){
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('video').srcObject = null;
+  $('modal').classList.add('hidden'); $('modal').classList.remove('flex');
+}
+$('btnCam').onclick = async () => {
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return toast('Kamera bu bağlamda kullanılamıyor. HTTPS veya localhost gerekir.');
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment', width:{ideal:1920}}, audio:false});
+    $('video').srcObject = stream;
+    $('modal').classList.remove('hidden'); $('modal').classList.add('flex');
+  }catch(e){ toast('Kamera izni verilmedi veya kamera bulunamadı.'); }
+};
+$('btnShot').onclick = () => { const v = $('video'); if(!v.videoWidth) return; const shot = captureColorFrame(v); closeCam(); showPreview(shot); scan(shot); };
+$('btnClose').onclick = closeCam;
+$('modal').onclick = e => { if(e.target === $('modal')) closeCam(); };
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeCam(); });
+$('btnClr').onclick = () => { logs = []; save(); renderLog(); };
+
+renderDrivers(); renderLog();
+</script>
+</body>
+</html>
