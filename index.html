@@ -165,7 +165,10 @@ function contactBtns(phone, size){
 
 /* ---------- Türkiye plaka algoritması ---------- */
 const RX = /^(0[1-9]|[1-7]\d|8[01])([A-PR-VYZ]{1,3})(\d{2,4})$/;   // il 01-81 + 1-3 harf (Q,W,X yok) + 2-4 rakam
+// Harf -> rakam benzerlik haritası (il kodu ve rakam grubu için)
 const FIX = {O:'0',Q:'0',D:'0',I:'1',L:'1',Z:'2',E:'3',A:'4',S:'5',G:'6',T:'7',B:'8'};
+// Rakam -> harf benzerlik haritası (harf grubu için, FIX'in tersi + en olası eşleşme)
+const RFIX = {'0':'O','1':'I','2':'Z','3':'E','4':'A','5':'S','6':'G','7':'T','8':'B'};
 const isStd = p => { const m = p.match(RX), L = m[2].length, D = m[3].length; return (L < 3 && D >= 3) || (L === 3 && D <= 3); };
 function extractAll(text){
   const up = text.toUpperCase(), out = {};
@@ -173,12 +176,26 @@ function extractAll(text){
     const s = line.replace(/[^A-Z0-9]/g, '');
     for(let i = 0; i <= s.length - 5; i++){
       for(let l = 5; l <= 9 && i + l <= s.length; l++){
-        const sub = s.substr(i, l); let sure = 0;
+        const sub = s.substr(i, l);
+        // il kodu (ilk 2 karakter): harf ise rakama çevir
+        let sure = 0;
         const head = [...sub.slice(0, 2)].map(c => /\d/.test(c) ? (sure++, c) : (FIX[c] || c)).join('');
-        const cand = head + sub.slice(2);
-        if(RX.test(cand)){
-          const sc = sure * 10 + l + (isStd(cand) ? 25 : 0);
-          if(!(cand in out) || sc > out[cand]) out[cand] = sc;
+        if(!/^\d{2}$/.test(head)) continue;
+        const rest = sub.slice(2);
+        // harf grubu (1-3) ve rakam grubu (2-4) sınırını deneyerek her ikisini de doğru yöne düzelt
+        for(let letLen = 1; letLen <= 3 && letLen <= rest.length; letLen++){
+          const digLen = rest.length - letLen;
+          if(digLen < 2 || digLen > 4) continue;
+          let fixes = 0;
+          const letPart = [...rest.slice(0, letLen)].map(c => { if(/\d/.test(c)){ fixes++; return RFIX[c] || c; } return c; }).join('');
+          const digPart = [...rest.slice(letLen)].map(c => { if(/[A-Z]/.test(c)){ fixes++; return FIX[c] || c; } return c; }).join('');
+          if(!/^[A-Z]{1,3}$/.test(letPart) || !/^\d{2,4}$/.test(digPart)) continue;
+          const cand = head + letPart + digPart;
+          if(RX.test(cand)){
+            // az düzeltme yapılan (daha güvenilir) adaylara daha yüksek puan
+            const sc = sure * 10 - fixes * 3 + l + (isStd(cand) ? 25 : 0);
+            if(!(cand in out) || sc > out[cand]) out[cand] = sc;
+          }
         }
       }
     }
@@ -197,7 +214,7 @@ async function getWorker(){
   if(worker) return worker;
   setStatus('OCR motoru yükleniyor...', 5);
   worker = await Tesseract.createWorker('eng');
-  await worker.setParameters({tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ '});
+  await worker.setParameters({tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPRSTUVYZ '});
   return worker;
 }
 async function ocr(w, cv, psm){
