@@ -2,33 +2,42 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#020617">
 <title>Plaka & Sürücü Tanıma</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-  .plate{display:inline-flex;align-items:stretch;background:#f8fafc;color:#0f172a;border:3px solid #0f172a;border-radius:8px;overflow:hidden;font-weight:800;letter-spacing:.12em}
-  .plate b{background:#1d4ed8;color:#fff;font-size:.6rem;padding:4px 6px;display:flex;align-items:flex-end;letter-spacing:0}
-  .plate span{padding:4px 14px;font-size:1.6rem}
-  .inp{width:100%;background:#0f172a;border:1px solid #334155;border-radius:.5rem;padding:.55rem .75rem;color:#e2e8f0;outline:none}
+  :root{box-sizing:border-box}
+  html{scroll-padding-top:env(safe-area-inset-top,0px)}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);overflow-x:hidden}
+  .plate{display:inline-flex;align-items:stretch;background:#f8fafc;color:#0f172a;border:3px solid #0f172a;border-radius:8px;overflow:hidden;font-weight:800;letter-spacing:.1em;max-width:100%}
+  .plate b{background:#1d4ed8;color:#fff;font-size:.6rem;padding:4px 6px;display:flex;align-items:flex-end;letter-spacing:0;flex-shrink:0}
+  .plate span{padding:4px 10px;font-size:clamp(1.1rem,6vw,1.6rem);white-space:nowrap}
+  .inp{width:100%;background:#0f172a;border:1px solid #334155;border-radius:.5rem;padding:.6rem .75rem;color:#e2e8f0;outline:none;font-size:16px;min-height:44px}
   .inp:focus{border-color:#38bdf8;box-shadow:0 0 0 2px #38bdf855}
-  .btn{display:inline-flex;align-items:center;gap:.5rem;padding:.55rem .95rem;border-radius:.5rem;font-weight:600;font-size:.875rem;transition:background .15s}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;padding:.6rem .95rem;border-radius:.5rem;font-weight:600;font-size:.875rem;transition:background .15s;min-height:44px;touch-action:manipulation}
   .btn:focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
   .btn:disabled{opacity:.5;cursor:not-allowed}
+  .chip{display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .7rem;border-radius:999px;font-weight:700;font-size:.8rem;background:#1e293b;color:#e2e8f0;border:1px solid #334155;min-height:36px;touch-action:manipulation}
+  .chip:active{background:#334155}
+  @media (max-width:640px){
+    .btn{flex:1 1 auto}
+    header .btn{font-size:.8rem;padding:.6rem .5rem}
+  }
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body class="bg-slate-950 text-slate-200 min-h-screen">
-<div class="max-w-7xl mx-auto p-4 md:p-6">
-  <header class="flex flex-wrap items-center justify-between gap-3 mb-6">
-    <div class="flex items-center gap-3">
-      <div class="w-11 h-11 rounded-xl bg-sky-500/15 text-sky-400 grid place-items-center text-xl"><i class="fa-solid fa-car-side"></i></div>
-      <div>
-        <h1 class="text-xl font-bold text-white">Plaka ve Sürücü Tanıma</h1>
-        <p class="text-sm text-slate-400">Tüm işlemler tarayıcınızda yapılır, veriler cihazınızda kalır.</p>
+<div class="max-w-7xl mx-auto p-3 xs:p-4 md:p-6">
+  <header class="mb-5 md:mb-6">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-11 h-11 shrink-0 rounded-xl bg-sky-500/15 text-sky-400 grid place-items-center text-xl"><i class="fa-solid fa-car-side"></i></div>
+      <div class="min-w-0">
+        <h1 class="text-lg sm:text-xl font-bold text-white truncate">Plaka ve Sürücü Tanıma</h1>
+        <p class="text-xs sm:text-sm text-slate-400">Tüm işlemler tarayıcınızda yapılır, veriler cihazınızda kalır.</p>
       </div>
     </div>
     <div class="flex flex-wrap gap-2">
@@ -39,22 +48,22 @@
     </div>
   </header>
 
-  <div class="grid lg:grid-cols-2 gap-6">
+  <div class="grid lg:grid-cols-2 gap-4 md:gap-6">
     <!-- SOL: tarama + sonuç -->
     <div class="space-y-6">
-      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5">
         <h2 class="font-semibold text-white mb-4"><i class="fa-solid fa-camera text-sky-400 mr-2"></i>Plakayı tara</h2>
         <div class="flex flex-wrap gap-3">
-          <button id="btnCam" class="btn bg-sky-600 hover:bg-sky-500 text-white"><i class="fa-solid fa-video"></i>Kamerayı aç</button>
-          <label class="btn bg-slate-800 hover:bg-slate-700 cursor-pointer"><i class="fa-solid fa-image"></i>Fotoğraf yükle ve tara
-            <input id="imgIn" type="file" accept="image/*" class="hidden"></label>
+          <button id="btnCam" class="btn bg-sky-600 hover:bg-sky-500 text-white w-full sm:w-auto"><i class="fa-solid fa-video"></i>Kamerayı aç</button>
+          <label class="btn bg-slate-800 hover:bg-slate-700 cursor-pointer w-full sm:w-auto"><i class="fa-solid fa-image"></i>Fotoğraf yükle ve tara
+            <input id="imgIn" type="file" accept="image/*" capture="environment" class="hidden"></label>
         </div>
         <div id="status" class="mt-4 text-sm text-slate-400 min-h-[1.25rem]">Bir plaka fotoğrafı seçin veya kamerayı açın.</div>
         <div id="bar" class="h-1.5 bg-slate-800 rounded mt-2 overflow-hidden hidden"><div id="barIn" class="h-full bg-sky-500 w-0"></div></div>
 
         <!-- Önizleme (otomatik taranır) -->
         <div id="cropWrap" class="hidden mt-4">
-          <img id="preview" alt="Taranan görsel" class="block max-w-full max-h-72 rounded-lg border border-slate-700">
+          <img id="preview" alt="Taranan görsel" class="block w-full max-w-full max-h-72 object-contain rounded-lg border border-slate-700">
         </div>
       </section>
       <section id="result" aria-live="polite">
@@ -65,27 +74,27 @@
     </div>
 
     <!-- SAĞ: form, liste, log -->
-    <div class="space-y-6">
-      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+    <div class="space-y-4 md:space-y-6">
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5">
         <h2 id="formTitle" class="font-semibold text-white mb-4"><i class="fa-solid fa-user-plus text-emerald-400 mr-2"></i>Sürücü ekle</h2>
         <div class="grid sm:grid-cols-2 gap-3">
           <input id="fPlate" class="inp uppercase" placeholder="Plaka (34 BYL 575)" maxlength="12">
           <input id="fName" class="inp" placeholder="Sürücü adı">
-          <input id="fPhone" class="inp" placeholder="Telefon">
+          <input id="fPhone" class="inp" placeholder="Telefon" inputmode="tel">
           <input id="fModel" class="inp" placeholder="Araç modeli">
         </div>
         <input id="fEditIdx" type="hidden" value="">
-        <div class="flex gap-2 mt-3">
-          <button id="btnAdd" class="btn bg-emerald-600 hover:bg-emerald-500 text-white"><i class="fa-solid fa-floppy-disk"></i>Kaydet</button>
-          <button id="btnCancelEdit" class="btn bg-slate-800 hover:bg-slate-700 hidden"><i class="fa-solid fa-xmark"></i>Vazgeç</button>
+        <div class="flex flex-wrap gap-2 mt-3">
+          <button id="btnAdd" class="btn bg-emerald-600 hover:bg-emerald-500 text-white flex-1 sm:flex-none"><i class="fa-solid fa-floppy-disk"></i>Kaydet</button>
+          <button id="btnCancelEdit" class="btn bg-slate-800 hover:bg-slate-700 hidden flex-1 sm:flex-none"><i class="fa-solid fa-xmark"></i>Vazgeç</button>
         </div>
       </section>
 
-      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5">
         <div class="flex items-center justify-between mb-3">
           <h2 class="font-semibold text-white"><i class="fa-solid fa-users text-sky-400 mr-2"></i>Kayıtlı sürücüler <span id="cnt" class="text-slate-500 font-normal"></span></h2>
         </div>
-        <div class="overflow-x-auto max-h-64 overflow-y-auto">
+        <div class="overflow-x-auto max-h-64 overflow-y-auto -mx-4 px-4 sm:mx-0 sm:px-0">
           <table class="w-full text-sm">
             <thead class="text-slate-400 text-left sticky top-0 bg-slate-900"><tr><th class="py-2 pr-3">Plaka</th><th class="pr-3">Sürücü</th><th class="pr-3">Telefon</th><th class="pr-3">Model</th><th class="pr-3">İletişim</th><th class="text-right pr-2">Düzenle</th><th></th></tr></thead>
             <tbody id="tbody"></tbody>
@@ -93,7 +102,7 @@
         </div>
       </section>
 
-      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5">
         <div class="flex items-center justify-between mb-3">
           <h2 class="font-semibold text-white"><i class="fa-solid fa-clock-rotate-left text-amber-400 mr-2"></i>Geçmiş (son 20 okuma)</h2>
           <button id="btnClr" class="text-xs text-slate-400 hover:text-white">Temizle</button>
@@ -105,19 +114,19 @@
 </div>
 
 <!-- Kamera modalı -->
-<div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4">
-  <div class="bg-slate-900 border border-slate-700 rounded-2xl p-4 w-full max-w-2xl">
+<div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-3 sm:p-4">
+  <div class="bg-slate-900 border border-slate-700 rounded-2xl p-3 sm:p-4 w-full max-w-2xl max-h-[92vh] overflow-y-auto" style="padding-top:calc(.75rem + env(safe-area-inset-top,0px))">
     <div class="flex justify-between items-center mb-3">
       <h3 class="font-semibold text-white">Kamera</h3>
-      <button id="btnClose" class="text-slate-400 hover:text-white" aria-label="Kapat"><i class="fa-solid fa-xmark text-xl"></i></button>
+      <button id="btnClose" class="text-slate-400 hover:text-white p-2 -m-2" aria-label="Kapat"><i class="fa-solid fa-xmark text-xl"></i></button>
     </div>
-    <video id="video" class="w-full rounded-lg bg-black aspect-video object-cover" autoplay playsinline muted></video>
+    <video id="video" class="w-full rounded-lg bg-black max-h-[60vh] aspect-video object-cover" autoplay playsinline muted></video>
     <p class="text-xs text-slate-400 mt-2">Plakayı çerçevenin ortasına alın ve yakından çekin.</p>
-    <button id="btnShot" class="btn bg-sky-600 hover:bg-sky-500 text-white mt-3"><i class="fa-solid fa-camera"></i>Çek ve tara</button>
+    <button id="btnShot" class="btn bg-sky-600 hover:bg-sky-500 text-white mt-3 w-full sm:w-auto"><i class="fa-solid fa-camera"></i>Çek ve tara</button>
   </div>
 </div>
 
-<div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-sm px-4 py-2 rounded-lg shadow-lg hidden z-[60]"></div>
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-sm px-4 py-2 rounded-lg shadow-lg hidden z-[60] max-w-[92vw] text-center" style="bottom:calc(1.25rem + env(safe-area-inset-bottom,0px))"></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -242,6 +251,59 @@ function findBoxes(cv){
   }
   return boxes.sort((p, q) => q.score - p.score).slice(0, 6);
 }
+/* Otsu eşikleme: gri tonlamalı (R=G=B) kanvası siyah/beyaza ayırır, karakterleri netleştirir */
+function binarize(cv){
+  const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height;
+  const ctx = c.getContext('2d', {willReadFrequently: true}); ctx.drawImage(cv, 0, 0);
+  const id = ctx.getImageData(0, 0, c.width, c.height), d = id.data, n = c.width * c.height;
+  const hist = new Array(256).fill(0);
+  for(let i = 0; i < n; i++) hist[d[i*4]]++;
+  let sum = 0; for(let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0, wB = 0, best = 0, th = 127;
+  for(let t = 0; t < 256; t++){
+    wB += hist[t]; if(!wB) continue;
+    const wF = n - wB; if(!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB, mF = (sum - sumB) / wF, between = wB * wF * (mB - mF) * (mB - mF);
+    if(between > best){ best = between; th = t; }
+  }
+  for(let i = 0; i < n; i++){ const v = d[i*4] > th ? 255 : 0; d[i*4] = d[i*4+1] = d[i*4+2] = v; }
+  ctx.putImageData(id, 0, 0);
+  return c;
+}
+/* TR plakalarındaki mavi "TR" şeridini bulup, plakanın tamamının olduğu dikdörtgeni tahmin eder (güçlü çapa) */
+function findBlueBox(cv){
+  const s = Math.min(1, 640 / cv.width), w = Math.round(cv.width * s), h = Math.round(cv.height * s);
+  const t = document.createElement('canvas'); t.width = w; t.height = h;
+  const x = t.getContext('2d', {willReadFrequently: true}); x.drawImage(cv, 0, 0, w, h);
+  const px = x.getImageData(0, 0, w, h).data, blue = new Uint8Array(w * h);
+  for(let i = 0; i < w * h; i++){
+    const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
+    blue[i] = (b > 70 && b - r > 25 && b - g > 15) ? 1 : 0;
+  }
+  const seen = new Uint8Array(w * h), boxes = [];
+  for(let st = 0; st < blue.length; st++){
+    if(!blue[st] || seen[st]) continue;
+    const q = [st]; seen[st] = 1; let x0 = w, y0 = h, x1 = 0, y1 = 0, cnt = 0;
+    while(q.length){
+      const c = q.pop(), cx = c % w, cy = (c / w) | 0; cnt++;
+      x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); y0 = Math.min(y0, cy); y1 = Math.max(y1, cy);
+      for(const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx = cx + dx, ny = cy + dy; if(nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const k = ny * w + nx; if(blue[k] && !seen[k]){ seen[k] = 1; q.push(k); }
+      }
+    }
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1, ar = bh / bw, fill = cnt / (bw * bh);
+    if(bh >= 8 && ar >= 1.6 && ar <= 7 && fill > .35 && bh <= h * .5) boxes.push({x0, y0, x1, bh, score: bh * fill});
+  }
+  if(!boxes.length) return null;
+  boxes.sort((a, b) => b.score - a.score);
+  const bb = boxes[0], f = 1 / s, bandH = bb.bh * f, bandX1 = bb.x1 * f, bandY0 = bb.y0 * f;
+  return {
+    x: Math.max(0, bandX1 - bandH * .08), y: Math.max(0, bandY0 - bandH * .08),
+    w: Math.min(cv.width - bandX1, bandH * 5.7), h: bandH * 1.16
+  };
+}
 function cropCanvas(src, b, target, contrast){
   const k = Math.max(1, Math.min(10, target / b.w)), pad = 16, c = document.createElement('canvas');
   c.width = Math.round(b.w * k) + pad * 2; c.height = Math.round(b.h * k) + pad * 2;
@@ -250,6 +312,7 @@ function cropCanvas(src, b, target, contrast){
   x.drawImage(src, b.x, b.y, b.w, b.h, pad, pad, c.width - pad * 2, c.height - pad * 2);
   return c;
 }
+let lastRaw = '', lastCandidates = [];
 async function scan(src){
   if(busy) return;
   busy = true;
@@ -259,44 +322,61 @@ async function scan(src){
     raw += text.trim() + ' | ';
     const all = extractAll(text);
     for(const p in all){
-      if(kind !== 'crop' && !isStd(p)) continue;            // bölge dışı sonuçlarda sadece standart format
-      const sc = all[p] + (kind === 'crop' ? 20 : 0) + (inDb(p) ? 100 : 0);
+      if(kind === 'tile' && !isStd(p)) continue;            // sadece son çare taramada standart formata zorla
+      const bonus = kind === 'anchor' ? 35 : kind === 'crop' ? 20 : 0;
+      const sc = all[p] + bonus + (inDb(p) ? 100 : 0);
       found[p] = (found[p] || 0) + sc;   // birden çok denemede aynı plaka çıkarsa puanı birikir (oy birliği)
     }
   };
+  // yeterli aday toplanana kadar devam eder (tek adayda durmak yanlış okumayı sabitler)
+  const enough = () => { const ks = Object.keys(found); return ks.length && ks.some(p => found[p] >= 55); };
   try{
     const canvas = prepare(src);
     $('preview').src = canvas.toDataURL('image/jpeg', .7);
     $('preview').classList.remove('hidden');
     const w = await getWorker();
 
-    // 1) Hızlı geçiş: plaka kareyi dolduruyorsa (yakından çekim) doğrudan tek satır olarak dene.
-    setStatus('Plaka kontrol ediliyor...', 8);
-    add(await ocr(w, canvas, 7), 'full');
-    if(!Object.keys(found).length){
-      const hc = prepare(src, 2.3);
-      add(await ocr(w, hc, 7), 'full');
+    // 1) Mavi "TR" şeridini bul: en güvenilir çapa, plakanın tam yerini verir.
+    setStatus('Plaka şeridi aranıyor...', 8);
+    const blueBox = findBlueBox(canvas);
+    if(blueBox && blueBox.w > 20){
+      for(const [psm, contrast, bin] of [[7, 1.6, false], [7, 2.4, false], [7, 1.8, true], [8, 2.2, false]]){
+        let cv = cropCanvas(canvas, blueBox, 820, contrast);
+        if(bin) cv = binarize(cv);
+        add(await ocr(w, cv, psm), 'anchor');
+      }
     }
 
-    // 2) Bölge tespiti: plakanın olası olduğu dikdörtgenleri bul, her birini birkaç ayarla dene ve oyla.
-    if(!Object.keys(found).length){
-      setStatus('Plaka bölgesi aranıyor...', 15);
+    // 2) Hızlı geçiş: plaka kareyi dolduruyorsa (yakından çekim) doğrudan tek satır olarak dene.
+    if(!enough()){
+      setStatus('Plaka kontrol ediliyor...', 20);
+      add(await ocr(w, canvas, 7), 'full');
+      const hc = prepare(src, 2.3);
+      add(await ocr(w, hc, 7), 'full');
+      add(await ocr(w, binarize(canvas), 7), 'full');
+    }
+
+    // 3) Bölge tespiti: plakanın olası olduğu dikdörtgenleri bul, her birini birkaç ayarla dene ve oyla.
+    if(!enough()){
+      setStatus('Plaka bölgesi aranıyor...', 30);
       const boxes = findBoxes(canvas);
-      for(let i = 0; i < boxes.length && !Object.keys(found).length; i++){
-        setStatus(`Aday bölge ${i + 1}/${boxes.length} okunuyor...`, 18 + i * 7);
-        for(const [psm, contrast] of [[7, 1.3], [7, 1.8], [7, 2.6], [6, 2.0], [8, 2.4]]){
-          const cv = cropCanvas(canvas, boxes[i], 760, contrast);
+      for(let i = 0; i < boxes.length && !enough(); i++){
+        setStatus(`Aday bölge ${i + 1}/${boxes.length} okunuyor...`, 34 + i * 6);
+        for(const [psm, contrast, bin] of [[7, 1.3, false], [7, 1.8, false], [7, 2.6, false], [6, 2.0, false], [8, 2.4, false], [7, 1.8, true]]){
+          let cv = cropCanvas(canvas, boxes[i], 800, contrast);
+          if(bin) cv = binarize(cv);
           add(await ocr(w, cv, psm), 'crop');
         }
       }
     }
 
-    // 3) Son çare: tüm görüntüyü blok olarak ve parçalara bölerek dene (uzak/eğik çekimler için).
-    if(!Object.keys(found).length){
+    // 4) Son çare: tüm görüntüyü blok olarak ve parçalara bölerek dene (uzak/eğik çekimler için).
+    if(!enough()){
       setStatus('Tüm görüntü taranıyor...', 55);
       add(await ocr(w, canvas, 6), 'full');
+      add(await ocr(w, binarize(canvas), 6), 'full');
       const tw = canvas.width * .4, th = canvas.height * .4;
-      for(let r = 0; r < 3 && !Object.keys(found).length; r++) for(let c = 0; c < 3 && !Object.keys(found).length; c++){
+      for(let r = 0; r < 3 && !enough(); r++) for(let c = 0; c < 3 && !enough(); c++){
         setStatus(`Görüntü parçası ${r * 3 + c + 1}/9 taranıyor...`, 60 + (r * 3 + c) * 4);
         const cv = cropCanvas(canvas, {x: c * canvas.width * .3, y: r * canvas.height * .3, w: tw, h: th}, 1000);
         add(await ocr(w, cv, 11), 'tile');
@@ -304,8 +384,9 @@ async function scan(src){
     }
 
     setStatus('Tarama tamamlandı.', null);
-    const best = Object.keys(found).sort((p, q) => found[q] - found[p])[0] || null;
-    handleResult(best, raw);
+    const ranked = Object.keys(found).sort((p, q) => found[q] - found[p]);
+    lastRaw = raw; lastCandidates = ranked;
+    handleResult(ranked[0] || null, raw, ranked);
   }catch(e){
     console.error(e);
     setStatus('Hata: OCR çalıştırılamadı. İnternet bağlantısını kontrol edin.', null);
@@ -313,13 +394,39 @@ async function scan(src){
 }
 
 /* ---------- Sonuç kartı ---------- */
-function handleResult(plate, raw){
+function altChipsHtml(plate, candidates){
+  const alts = (candidates || []).filter(p => p !== plate).slice(0, 4);
+  if(!alts.length) return '';
+  return `<div class="mt-4 pt-3 border-t border-white/10">
+    <p class="text-xs text-slate-400 mb-2">Okuma farklı mı? Diğer olası okumalar:</p>
+    <div class="flex flex-wrap gap-2">${alts.map(p => `<button class="chip" onclick="chooseCandidate('${p}')">${esc(fmt(p))}</button>`).join('')}</div>
+  </div>`;
+}
+function manualFixHtml(plate){
+  return `<div class="mt-4 pt-3 border-t border-white/10">
+    <p class="text-xs text-slate-400 mb-2">Yanlış okundu mu? Plakayı elle düzeltin:</p>
+    <div class="flex flex-wrap gap-2">
+      <input id="manualPlate" class="inp uppercase flex-1 min-w-[10rem]" placeholder="Örn. 34 BYL 575" maxlength="12" value="${esc(plate ? fmt(plate) : '')}">
+      <button class="btn bg-sky-600 hover:bg-sky-500 text-white" onclick="manualLookup()"><i class="fa-solid fa-magnifying-glass"></i>Ara</button>
+    </div>
+  </div>`;
+}
+function chooseCandidate(plate){ handleResult(plate, lastRaw, lastCandidates); }
+function manualLookup(){
+  const val = norm($('manualPlate').value);
+  if(!val) return toast('Bir plaka girin.');
+  if(!RX.test(val)) return toast('Geçersiz plaka biçimi. Örnek: 34 BYL 575');
+  handleResult(val, lastRaw, lastCandidates.includes(val) ? lastCandidates : [val, ...lastCandidates]);
+}
+function handleResult(plate, raw, candidates){
+  raw = raw ?? lastRaw; candidates = candidates ?? lastCandidates;
   const box = $('result');
   if(!plate){
     box.innerHTML = `<div class="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
       <div class="font-semibold text-amber-300 mb-1"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Geçerli plaka bulunamadı</div>
-      <p class="text-sm text-slate-300">Plakayı daha yakından ve düz açıyla çekip tekrar deneyin.</p>
-      <p class="text-xs text-slate-500 mt-2 break-words">Okunan ham metin: ${esc(raw.trim().slice(0, 120)) || '(boş)'}</p></div>`;
+      <p class="text-sm text-slate-300">Plakayı daha yakından, düz açıyla ve iyi ışıkta çekip tekrar deneyin.</p>
+      <p class="text-xs text-slate-500 mt-2 break-words">Okunan ham metin: ${esc(raw.trim().slice(0, 120)) || '(boş)'}</p>
+      ${manualFixHtml(null)}${altChipsHtml(plate, candidates)}</div>`;
     addLog(null, false); return;
   }
   const idx = drivers.findIndex(x => norm(x.plate) === plate);
@@ -327,7 +434,7 @@ function handleResult(plate, raw){
   if(d){
     box.innerHTML = `<div class="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-5">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-4">${plateHtml(plate)}
-        <span class="flex items-center gap-2">
+        <span class="flex items-center gap-2 flex-wrap">
           <span class="bg-emerald-500 text-slate-950 font-bold text-sm px-3 py-1.5 rounded-full"><i class="fa-solid fa-circle-check mr-1"></i>Giriş onaylandı</span>
           <button class="btn bg-slate-800 hover:bg-slate-700" onclick="editDriver(${idx})"><i class="fa-solid fa-pen"></i>Düzenle</button>
         </span></div>
@@ -335,13 +442,15 @@ function handleResult(plate, raw){
         <div><dt class="text-slate-400">Sürücü adı</dt><dd class="text-white font-semibold">${esc(d.name)}</dd></div>
         <div><dt class="text-slate-400">Telefon</dt><dd class="text-white font-semibold flex items-center gap-2 flex-wrap"><span>${esc(d.phone) || '-'}</span>${contactBtns(d.phone)}</dd></div>
         <div><dt class="text-slate-400">Araç modeli</dt><dd class="text-white font-semibold">${esc(d.model) || '-'}</dd></div>
-      </dl></div>`;
+      </dl>
+      ${manualFixHtml(plate)}${altChipsHtml(plate, candidates)}</div>`;
   }else{
     box.innerHTML = `<div class="rounded-2xl border border-red-500/40 bg-red-500/10 p-5">
       <div class="flex flex-wrap items-center justify-between gap-3 mb-3">${plateHtml(plate)}
         <span class="bg-red-500 text-white font-bold text-sm px-3 py-1.5 rounded-full"><i class="fa-solid fa-ban mr-1"></i>Kayıt bulunamadı</span></div>
       <p class="text-sm text-slate-300 mb-3">Bu plaka sürücü listesinde yok.</p>
-      <button class="btn bg-red-600 hover:bg-red-500 text-white" onclick="fillForm('${plate}')"><i class="fa-solid fa-plus"></i>Bu plakayı sisteme kaydet</button></div>`;
+      <button class="btn bg-red-600 hover:bg-red-500 text-white" onclick="fillForm('${plate}')"><i class="fa-solid fa-plus"></i>Bu plakayı sisteme kaydet</button>
+      ${manualFixHtml(plate)}${altChipsHtml(plate, candidates)}</div>`;
   }
   addLog(plate, !!d);
 }
