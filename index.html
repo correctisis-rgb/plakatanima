@@ -15,10 +15,20 @@
 <style>
   :root{box-sizing:border-box}
   html{scroll-padding-top:env(safe-area-inset-top,0px)}
-  html,body{height:100%;overscroll-behavior-x:none}
+  html,body{height:100%;overscroll-behavior-x:none;max-width:100%}
   @supports (height:100dvh){ body{min-height:100dvh} }
   html{touch-action:pan-y}
-  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);overflow-x:hidden;touch-action:pan-y}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);overflow-x:hidden;touch-action:pan-y;width:100%}
+  /* Telefonlarda içerik taşmasın: flex/grid çocukları küçülebilsin, görseller kapsayıcıyı aşmasın */
+  img,video,canvas{max-width:100%;height:auto}
+  .flex,.grid{min-width:0}
+  .flex > *{min-width:0}
+  p,h1,h2,h3{overflow-wrap:break-word;word-break:break-word}
+  /* Tarama sırasında arayüzü kilitleyen, açıkça görünen yükleniyor katmanı */
+  #scanOverlay{position:fixed;inset:0;z-index:70;background:rgba(2,6,23,.75);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;padding:1rem}
+  #scanOverlay.show{display:flex}
+  .spin{width:2.5rem;height:2.5rem;border-radius:999px;border:3px solid #334155;border-top-color:#38bdf8;animation:spin 0.8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .plate{display:inline-flex;align-items:stretch;background:#f8fafc;color:#0f172a;border:3px solid #0f172a;border-radius:8px;overflow:hidden;font-weight:800;letter-spacing:.1em;max-width:100%}
   .plate b{background:#1d4ed8;color:#fff;font-size:.6rem;padding:4px 6px;display:flex;align-items:flex-end;letter-spacing:0;flex-shrink:0}
   .plate span{padding:4px 10px;font-size:clamp(1.1rem,6vw,1.6rem);white-space:nowrap}
@@ -135,6 +145,15 @@
 
 <div id="toast" class="fixed left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-sm px-4 py-2 rounded-lg shadow-lg hidden z-[60] max-w-[92vw] text-center" style="bottom:calc(1.25rem + env(safe-area-inset-bottom,0px))"></div>
 
+<!-- Tarama sırasında görünen yükleniyor katmanı: kullanıcı taramanın çalıştığını net görsün -->
+<div id="scanOverlay">
+  <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-xs w-full text-center">
+    <div class="spin mx-auto mb-4"></div>
+    <p id="scanOverlayText" class="text-white font-semibold mb-2">Taranıyor...</p>
+    <div class="h-1.5 bg-slate-800 rounded overflow-hidden"><div id="scanOverlayBar" class="h-full bg-sky-500 w-0 transition-all"></div></div>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 const KEY = 'plk_drivers_v1', LKEY = 'plk_log_v1';
@@ -226,6 +245,10 @@ function setStatus(t, pct){
   $('status').textContent = t;
   $('bar').classList.toggle('hidden', pct == null);
   if(pct != null) $('barIn').style.width = pct + '%';
+  // Tarama devam ederken tam ekran katmanı göster; bitince (pct null) gizle.
+  $('scanOverlay').classList.toggle('show', pct != null);
+  $('scanOverlayText').textContent = t;
+  if(pct != null) $('scanOverlayBar').style.width = pct + '%';
 }
 function b64ToBytes(b64){
   const bin = atob(b64), out = new Uint8Array(bin.length);
@@ -424,6 +447,7 @@ let lastRaw = '', lastCandidates = [], lastHasEvidence = true;
 async function scan(src){
   if(busy) return;
   busy = true;
+  $('btnCam').disabled = true;
   const found = {}; let raw = '';
   const inDb = p => drivers.some(d => norm(d.plate) === p);
   // Bir okuma denemesini (metin + modelin kendi güven skoru) aday havuzuna ekler.
@@ -492,7 +516,7 @@ async function scan(src){
   }catch(e){
     console.error(e);
     setStatus('Hata: OCR modeli çalıştırılamadı. Sayfayı yeniden yükleyip tekrar deneyin.', null);
-  }finally{ busy = false; }
+  }finally{ busy = false; $('btnCam').disabled = false; }
 }
 
 /* ---------- Sonuç kartı ---------- */
@@ -503,6 +527,9 @@ function altChipsHtml(plate, candidates){
     <p class="text-xs text-slate-400 mb-2">Okuma farklı mı? Diğer olası okumalar:</p>
     <div class="flex flex-wrap gap-2">${alts.map(p => `<button class="chip" onclick="chooseCandidate('${p}')">${esc(fmt(p))}</button>`).join('')}</div>
   </div>`;
+}
+function retryBtnHtml(){
+  return `<button class="btn bg-slate-800 hover:bg-slate-700 mt-3" onclick="retryScan()"><i class="fa-solid fa-rotate"></i>Aynı fotoğrafla tekrar dene</button>`;
 }
 function manualFixHtml(plate){
   return `<div class="mt-4 pt-3 border-t border-white/10">
@@ -529,13 +556,13 @@ function handleResult(plate, raw, candidates, hasPlateEvidence){
       box.innerHTML = `<div class="rounded-2xl border border-slate-700 bg-slate-800/40 p-5">
         <div class="font-semibold text-slate-200 mb-1"><i class="fa-solid fa-car-burst mr-2 text-slate-400"></i>Bu bir araç fotoğrafı değil gibi görünüyor</div>
         <p class="text-sm text-slate-400">Görselde araç plakasına benzeyen (beyaz zeminli, büyük siyah metinli) bir bölge bulunamadı. Rastgele metinleri plaka sanmamak için taramayı burada durdurduk. Lütfen plakanın net göründüğü bir araç fotoğrafı yükleyin.</p>
-        ${manualFixHtml(null)}</div>`;
+        ${manualFixHtml(null)}${retryBtnHtml()}</div>`;
     }else{
       box.innerHTML = `<div class="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
         <div class="font-semibold text-amber-300 mb-1"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Geçerli plaka bulunamadı</div>
         <p class="text-sm text-slate-300">Plakayı daha yakından, düz açıyla ve iyi ışıkta çekip tekrar deneyin.</p>
         <p class="text-xs text-slate-500 mt-2 break-words">Okunan ham metin: ${esc(raw.trim().slice(0, 120)) || '(boş)'}</p>
-        ${manualFixHtml(null)}${altChipsHtml(plate, candidates)}</div>`;
+        ${manualFixHtml(null)}${retryBtnHtml()}${altChipsHtml(plate, candidates)}</div>`;
     }
     addLog(null, false); return;
   }
@@ -703,6 +730,10 @@ function captureColorFrame(v){
   return c;
 }
 
+function retryScan(){
+  if(!rawSrc) return toast('Yeniden denenecek bir fotoğraf yok.');
+  scan(rawSrc);
+}
 $('imgIn').onchange = e => {
   const f = e.target.files[0]; if(!f) return;
   const img = new Image();
