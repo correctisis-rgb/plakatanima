@@ -260,10 +260,12 @@ function findBoxes(cv){
     }
     const bw = x1 - x0 + 1, bh = y1 - y0 + 1, ar = bw / bh, fill = cnt / (bw * bh);
     if(bw >= 6 && bh >= 2 && bw <= cw && ar >= 1.6 && ar <= 9 && fill > .28){
-      const px_ = bw * f * .12, py_ = bh * f * .35;
+      const px_ = bw * f * .08, py_ = bh * f * .18;
       const bx = Math.max(0, x0 * f - px_), by = Math.max(0, y0 * f - py_);
+      const fullH = Math.min(cv.height - by, bh * f + 2 * py_);
+      if(fullH < cv.height * 0.018) continue;   // görüntüye göre aşırı küçük metin (reklam/etiket vb.), plaka olamaz
       boxes.push({score: fill * Math.sqrt(bw * bh), x: bx, y: by,
-        w: Math.min(cv.width - bx, bw * f + 2 * px_), h: Math.min(cv.height - by, bh * f + 2 * py_)});
+        w: Math.min(cv.width - bx, bw * f + 2 * px_), h: fullH});
     }
   }
   return boxes.sort((p, q) => q.score - p.score).slice(0, 6);
@@ -329,7 +331,36 @@ function cropCanvas(src, b, target, contrast){
   x.drawImage(src, b.x, b.y, b.w, b.h, pad, pad, c.width - pad * 2, c.height - pad * 2);
   return c;
 }
-let lastRaw = '', lastCandidates = [];
+/* Renkli (gri tonlamaya çevrilmemiş) önizleme: kutuların gerçekten "plaka gibi" olup olmadığını
+   (beyaz zemin + siyah metin, düşük renk doygunluğu) kontrol etmek için kullanılır. */
+function prepareColor(src, w, h){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  return c;
+}
+function plateBoxStats(colorCv, b){
+  const bw = Math.max(1, Math.round(b.w)), bh = Math.max(1, Math.round(b.h));
+  const t = document.createElement('canvas'); t.width = bw; t.height = bh;
+  const ctx = t.getContext('2d', {willReadFrequently: true});
+  ctx.drawImage(colorCv, b.x, b.y, b.w, b.h, 0, 0, bw, bh);
+  const d = ctx.getImageData(0, 0, bw, bh).data, n = bw * bh;
+  let bright = 0, dark = 0, satSum = 0;
+  for(let i = 0; i < d.length; i += 4){
+    const r = d[i], g = d[i+1], bl = d[i+2], lum = r * .3 + g * .59 + bl * .11;
+    const mx = Math.max(r, g, bl), mn = Math.min(r, g, bl);
+    satSum += mx ? (mx - mn) / mx : 0;
+    if(lum > 165) bright++; else if(lum < 95) dark++;
+  }
+  return {brightRatio: bright / n, darkRatio: dark / n, sat: satSum / n};
+}
+/* Plaka: baskın olarak açık/beyaz zemin + belirgin oranda koyu, büyük punto metin + düşük renk doygunluğu.
+   Bu, ekranlar (LCD/telefon), afişler, çerçeve reklamları gibi plaka-olmayan dikdörtgenleri elemek içindir. */
+function looksLikePlate(colorCv, b){
+  const s = plateBoxStats(colorCv, b);
+  return s.brightRatio > 0.35 && s.darkRatio > 0.05 && s.darkRatio < 0.55 && s.sat < 0.30;
+}
+let lastRaw = '', lastCandidates = [], lastHasEvidence = true;
 async function scan(src){
   if(busy) return;
   busy = true;
@@ -349,6 +380,7 @@ async function scan(src){
   const enough = () => { const ks = Object.keys(found); return ks.length && ks.some(p => found[p] >= 55); };
   try{
     const canvas = prepare(src);
+    const colorCanvas = prepareColor(src, canvas.width, canvas.height);
     $('preview').src = canvas.toDataURL('image/jpeg', .7);
     $('preview').classList.remove('hidden');
     const w = await getWorker();
@@ -356,7 +388,8 @@ async function scan(src){
     // 1) Mavi "TR" şeridini bul: en güvenilir çapa, plakanın tam yerini verir.
     setStatus('Plaka şeridi aranıyor...', 8);
     const blueBox = findBlueBox(canvas);
-    if(blueBox && blueBox.w > 20){
+    const hasBlueAnchor = !!(blueBox && blueBox.w > 20);
+    if(hasBlueAnchor){
       for(const [psm, contrast, bin] of [[7, 1.6, false], [7, 2.4, false], [7, 1.8, true], [8, 2.2, false]]){
         let cv = cropCanvas(canvas, blueBox, 820, contrast);
         if(bin) cv = binarize(cv);
@@ -373,10 +406,12 @@ async function scan(src){
       add(await ocr(w, binarize(canvas), 7), 'full');
     }
 
-    // 3) Bölge tespiti: plakanın olası olduğu dikdörtgenleri bul, her birini birkaç ayarla dene ve oyla.
+    // 3) Bölge tespiti: plakanın olası olduğu, gerçekten plaka gibi görünen (beyaz zemin + siyah, büyük
+    //    punto metin) dikdörtgenleri bul; ekran/afiş/çerçeve reklamı gibi plaka-olmayan alanları ele.
+    let boxes = [];
     if(!enough()){
       setStatus('Plaka bölgesi aranıyor...', 30);
-      const boxes = findBoxes(canvas);
+      boxes = findBoxes(canvas).filter(b => looksLikePlate(colorCanvas, b));
       for(let i = 0; i < boxes.length && !enough(); i++){
         setStatus(`Aday bölge ${i + 1}/${boxes.length} okunuyor...`, 34 + i * 6);
         for(const [psm, contrast, bin] of [[7, 1.3, false], [7, 1.8, false], [7, 2.6, false], [6, 2.0, false], [8, 2.4, false], [7, 1.8, true]]){
@@ -387,8 +422,13 @@ async function scan(src){
       }
     }
 
-    // 4) Son çare: tüm görüntüyü blok olarak ve parçalara bölerek dene (uzak/eğik çekimler için).
-    if(!enough()){
+    // Görselde plaka olduğuna dair somut bir iz var mı? (mavi TR şeridi ya da beyaz zeminli/siyah metinli
+    // bir bölge). Yoksa bu muhtemelen bir araç/plaka fotoğrafı değildir; rastgele metni plaka gibi
+    // yorumlamamak için son çare tüm-görüntü taramasını atlıyoruz.
+    const hasPlateEvidence = hasBlueAnchor || boxes.length > 0;
+
+    // 4) Son çare: sadece plaka izine rastlandıysa (okuma zorsa) tüm görüntüyü bloklara bölerek dene.
+    if(!enough() && hasPlateEvidence){
       setStatus('Tüm görüntü taranıyor...', 55);
       add(await ocr(w, canvas, 6), 'full');
       add(await ocr(w, binarize(canvas), 6), 'full');
@@ -402,8 +442,8 @@ async function scan(src){
 
     setStatus('Tarama tamamlandı.', null);
     const ranked = Object.keys(found).sort((p, q) => found[q] - found[p]);
-    lastRaw = raw; lastCandidates = ranked;
-    handleResult(ranked[0] || null, raw, ranked);
+    lastRaw = raw; lastCandidates = ranked; lastHasEvidence = hasPlateEvidence;
+    handleResult(ranked[0] || null, raw, ranked, hasPlateEvidence);
   }catch(e){
     console.error(e);
     setStatus('Hata: OCR çalıştırılamadı. İnternet bağlantısını kontrol edin.', null);
@@ -428,22 +468,30 @@ function manualFixHtml(plate){
     </div>
   </div>`;
 }
-function chooseCandidate(plate){ handleResult(plate, lastRaw, lastCandidates); }
+function chooseCandidate(plate){ handleResult(plate, lastRaw, lastCandidates, lastHasEvidence); }
 function manualLookup(){
   const val = norm($('manualPlate').value);
   if(!val) return toast('Bir plaka girin.');
   if(!RX.test(val)) return toast('Geçersiz plaka biçimi. Örnek: 34 BYL 575');
-  handleResult(val, lastRaw, lastCandidates.includes(val) ? lastCandidates : [val, ...lastCandidates]);
+  handleResult(val, lastRaw, lastCandidates.includes(val) ? lastCandidates : [val, ...lastCandidates], true);
 }
-function handleResult(plate, raw, candidates){
+function handleResult(plate, raw, candidates, hasPlateEvidence){
   raw = raw ?? lastRaw; candidates = candidates ?? lastCandidates;
+  if(hasPlateEvidence === undefined) hasPlateEvidence = lastHasEvidence;
   const box = $('result');
   if(!plate){
-    box.innerHTML = `<div class="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
-      <div class="font-semibold text-amber-300 mb-1"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Geçerli plaka bulunamadı</div>
-      <p class="text-sm text-slate-300">Plakayı daha yakından, düz açıyla ve iyi ışıkta çekip tekrar deneyin.</p>
-      <p class="text-xs text-slate-500 mt-2 break-words">Okunan ham metin: ${esc(raw.trim().slice(0, 120)) || '(boş)'}</p>
-      ${manualFixHtml(null)}${altChipsHtml(plate, candidates)}</div>`;
+    if(!hasPlateEvidence){
+      box.innerHTML = `<div class="rounded-2xl border border-slate-700 bg-slate-800/40 p-5">
+        <div class="font-semibold text-slate-200 mb-1"><i class="fa-solid fa-car-burst mr-2 text-slate-400"></i>Bu bir araç fotoğrafı değil gibi görünüyor</div>
+        <p class="text-sm text-slate-400">Görselde araç plakasına benzeyen (beyaz zeminli, büyük siyah metinli) bir bölge bulunamadı. Rastgele metinleri plaka sanmamak için taramayı burada durdurduk. Lütfen plakanın net göründüğü bir araç fotoğrafı yükleyin.</p>
+        ${manualFixHtml(null)}</div>`;
+    }else{
+      box.innerHTML = `<div class="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
+        <div class="font-semibold text-amber-300 mb-1"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Geçerli plaka bulunamadı</div>
+        <p class="text-sm text-slate-300">Plakayı daha yakından, düz açıyla ve iyi ışıkta çekip tekrar deneyin.</p>
+        <p class="text-xs text-slate-500 mt-2 break-words">Okunan ham metin: ${esc(raw.trim().slice(0, 120)) || '(boş)'}</p>
+        ${manualFixHtml(null)}${altChipsHtml(plate, candidates)}</div>`;
+    }
     addLog(null, false); return;
   }
   const idx = drivers.findIndex(x => norm(x.plate) === plate);
