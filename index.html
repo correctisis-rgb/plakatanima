@@ -137,9 +137,15 @@
       <h3 class="font-semibold text-white">Kamera</h3>
       <button id="btnClose" class="text-slate-400 hover:text-white p-2 -m-2" aria-label="Kapat"><i class="fa-solid fa-xmark text-xl"></i></button>
     </div>
-    <video id="video" class="w-full rounded-lg bg-black max-h-[60vh] aspect-video object-cover" autoplay playsinline muted></video>
-    <p class="text-xs text-slate-400 mt-2">Plakayı çerçevenin ortasına alın ve yakından çekin.</p>
-    <button id="btnShot" class="btn bg-sky-600 hover:bg-sky-500 text-white mt-3 w-full sm:w-auto"><i class="fa-solid fa-camera"></i>Çek ve tara</button>
+    <div id="camWrap" class="relative w-full max-h-[60vh] rounded-lg overflow-hidden bg-black">
+      <video id="video" class="block w-full max-h-[60vh] object-contain" autoplay playsinline muted></video>
+      <canvas id="camOverlay" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+      <div id="camLiveStatus" class="absolute left-1/2 -translate-x-1/2 bottom-2 max-w-[92%] text-center text-xs font-semibold bg-slate-950/80 text-sky-300 px-3 py-1.5 rounded-full flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse shrink-0"></span><span id="camLiveStatusText">Araç ve plaka aranıyor...</span>
+      </div>
+    </div>
+    <p class="text-xs text-slate-400 mt-2">Plakayı çerçevenin içinde tutun; araç hareket halindeyken de otomatik taranır.</p>
+    <button id="btnShot" class="btn bg-slate-800 hover:bg-slate-700 mt-3 w-full sm:w-auto"><i class="fa-solid fa-camera"></i>Elle çek ve tara</button>
   </div>
 </div>
 
@@ -730,6 +736,105 @@ function captureColorFrame(v){
   return c;
 }
 
+/* ---------- Canlı tarama: kamera açıkken otomatik araç/plaka tespiti ---------- */
+let liveActive = false, liveTimer = null, liveFound = {}, liveRaw = '', liveNoBoxTicks = 0, liveModelReady = false;
+function liveReset(){ liveFound = {}; liveRaw = ''; liveNoBoxTicks = 0; }
+function setLiveStatus(t){ const el = $('camLiveStatusText'); if(el) el.textContent = t; }
+/* Videodan küçük (tespit için yeterli) bir kare yakalar; performans için indirger. */
+function grabDetectFrame(v, maxW){
+  maxW = maxW || 480;
+  const nw = v.videoWidth, nh = v.videoHeight;
+  const s = Math.min(1, maxW / nw), w = Math.round(nw * s), h = Math.round(nh * s);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d', {willReadFrequently: true}).drawImage(v, 0, 0, w, h);
+  return {canvas: c, scaleToNative: nw / w};
+}
+/* Tespit edilen kutuyu (küçük kare koordinatında), videonun gerçekte ekranda çizildiği
+   (object-contain nedeniyle mektup-kutulu olabilen) alana dönüştürüp bindirme kanvasına çizer. */
+function drawOverlay(box, det){
+  const v = $('video'), cv = $('camOverlay'), wrap = $('camWrap');
+  if(!v || !cv || !wrap) return;
+  const dispW = wrap.clientWidth, dispH = wrap.clientHeight;
+  cv.width = dispW; cv.height = dispH;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, dispW, dispH);
+  if(!box || !v.videoWidth) return;
+  const nw = v.videoWidth, nh = v.videoHeight;
+  const fit = Math.min(dispW / nw, dispH / nh);
+  const offX = (dispW - nw * fit) / 2, offY = (dispH - nh * fit) / 2;
+  const k = det.scaleToNative * fit;
+  const x = offX + box.x * k, y = offY + box.y * k, w = box.w * k, h = box.h * k;
+  ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h);
+  const cl = 14;
+  ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 4;
+  [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([cx,cy,dx,dy]) => {
+    ctx.beginPath(); ctx.moveTo(cx, cy + cl*dy); ctx.lineTo(cx, cy); ctx.lineTo(cx + cl*dx, cy); ctx.stroke();
+  });
+}
+async function liveTick(){
+  if(!liveActive) return;
+  const v = $('video');
+  if(!v || !v.videoWidth){ return; }
+  const det = grabDetectFrame(v);
+  let box = findBlueBox(det.canvas);
+  let hasAnchor = !!(box && box.w > 20);
+  if(!box){
+    const boxes = findBoxes(det.canvas).filter(b => looksLikePlate(det.canvas, b));
+    box = boxes[0] || null;
+  }
+  drawOverlay(box, det);
+  if(!box){
+    liveNoBoxTicks++;
+    if(liveNoBoxTicks > 6) liveReset();
+    setLiveStatus('Araç ve plaka aranıyor...');
+    return;
+  }
+  liveNoBoxTicks = 0;
+  if(busy) return;   // önceki okuma hâlâ sürüyor, bu turu atla
+  busy = true;
+  try{
+    if(!liveModelReady){ setLiveStatus('OCR modeli yükleniyor...'); await getSession(); liveModelReady = true; }
+    if(!liveActive) return;
+    setLiveStatus('Plaka kare içinde, okunuyor...');
+    const shot = captureColorFrame(v);
+    const scaleUp = shot.width / det.canvas.width;
+    const nativeBox = {x: box.x * scaleUp, y: box.y * scaleUp, w: box.w * scaleUp, h: box.h * scaleUp};
+    const r = await ocrPlate(shot, nativeBox);
+    if(!liveActive) return;
+    liveRaw += `${r.text} (%${Math.round((r.conf || 0) * 100)}) `;
+    const all = extractAll(r.text), inDb = p => drivers.some(d => norm(d.plate) === p);
+    for(const p in all){
+      const bonus = hasAnchor ? 20 : 8;
+      const sc = Math.round((r.conf || 0) * 45) + bonus + (inDb(p) ? 100 : 0);
+      liveFound[p] = (liveFound[p] || 0) + sc;
+    }
+    const ks = Object.keys(liveFound);
+    const best = ks.sort((a, b) => liveFound[b] - liveFound[a])[0];
+    if(best && liveFound[best] >= 60){
+      stopLiveScan();
+      closeCam();
+      showPreview(shot);
+      lastRaw = liveRaw; lastCandidates = ks.sort((a, b) => liveFound[b] - liveFound[a]); lastHasEvidence = true;
+      handleResult(best, liveRaw, lastCandidates, true);
+    }else if(best){
+      setLiveStatus(`Aday okunuyor: ${fmt(best)} — netleşmesi bekleniyor...`);
+    }
+  }catch(e){ console.error(e); }
+  finally{ busy = false; }
+}
+function startLiveScan(){
+  liveActive = true; liveModelReady = !!session; liveReset();
+  setLiveStatus('Araç ve plaka aranıyor...');
+  getSession().then(() => { liveModelReady = true; }).catch(() => {});
+  clearInterval(liveTimer);
+  liveTimer = setInterval(liveTick, 450);
+}
+function stopLiveScan(){
+  liveActive = false;
+  clearInterval(liveTimer); liveTimer = null;
+  const cv = $('camOverlay'); if(cv){ const ctx = cv.getContext('2d'); ctx && ctx.clearRect(0, 0, cv.width, cv.height); }
+}
+
 function retryScan(){
   if(!rawSrc) return toast('Yeniden denenecek bir fotoğraf yok.');
   scan(rawSrc);
@@ -745,6 +850,7 @@ $('imgIn').onchange = e => {
 
 let stream = null;
 function closeCam(){
+  stopLiveScan();
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
   $('video').srcObject = null;
   $('modal').classList.add('hidden'); $('modal').classList.remove('flex');
@@ -756,9 +862,10 @@ $('btnCam').onclick = async () => {
     stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment', width:{ideal:1920}}, audio:false});
     $('video').srcObject = stream;
     $('modal').classList.remove('hidden'); $('modal').classList.add('flex');
+    $('video').onloadedmetadata = () => startLiveScan();
   }catch(e){ toast('Kamera izni verilmedi veya kamera bulunamadı.'); }
 };
-$('btnShot').onclick = () => { const v = $('video'); if(!v.videoWidth) return; const shot = captureColorFrame(v); closeCam(); showPreview(shot); scan(shot); };
+$('btnShot').onclick = () => { const v = $('video'); if(!v.videoWidth) return; stopLiveScan(); const shot = captureColorFrame(v); closeCam(); showPreview(shot); scan(shot); };
 $('btnClose').onclick = closeCam;
 $('modal').onclick = e => { if(e.target === $('modal')) closeCam(); };
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closeCam(); });
