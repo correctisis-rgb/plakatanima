@@ -22,7 +22,7 @@
   /* Telefonlarda içerik taşmasın: flex/grid çocukları küçülebilsin, görseller kapsayıcıyı aşmasın */
   img,video,canvas{max-width:100%;height:auto}
   .flex,.grid{min-width:0}
-  .flex > *{min-width:0}
+  .flex > *,.grid > *{min-width:0}
   p,h1,h2,h3{overflow-wrap:break-word;word-break:break-word}
   /* Tarama sırasında arayüzü kilitleyen, açıkça görünen yükleniyor katmanı */
   #scanOverlay{position:fixed;inset:0;z-index:70;background:rgba(2,6,23,.75);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;padding:1rem}
