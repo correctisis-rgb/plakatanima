@@ -2195,10 +2195,10 @@ renderLog = function(){ _rl.apply(this, arguments); try{ checkFull(); }catch(e){
    3) ARAYÜZ (Ayarlar sekmesi)
    ===================================================================== */
 const mkCard = (title, body) => { const s = document.createElement('section'); s.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5'; s.innerHTML = `<h2 class="font-semibold text-white mb-4">${title}</h2>${body}`; return s; };
-const CK = 'display:flex;align-items:center;gap:.55rem;font-size:.875rem;color:#e2e8f0;cursor:pointer';
+const CK = 'display:flex;align-items:center;gap:.55rem;font-size:.875rem;color:inherit;cursor:pointer';
 const CB = 'width:1.1rem;height:1.1rem;accent-color:#0ea5e9;flex-shrink:0';
 
-const bkCard = mkCard('<i class="fa-solid fa-cloud-arrow-down text-emerald-400 mr-2"></i>Otomatik yedek', `
+const bkCard = mkCard('<i class="fa-solid fa-floppy-disk text-emerald-400 mr-2"></i>Otomatik yedek', `
   <p class="text-sm text-slate-400 mb-3">Veriler bu tarayıcıda durur. Tarayıcı verisi silinirse her şey gider; bu yüzden günde bir kez yedek indirilir.</p>
   <label style="${CK}"><input type="checkbox" id="bkOn" style="${CB}"> Günlük otomatik yedek al</label>
   <div class="grid sm:grid-cols-2 gap-3 mt-3">
@@ -2208,14 +2208,14 @@ const bkCard = mkCard('<i class="fa-solid fa-cloud-arrow-down text-emerald-400 m
   <label style="${CK};margin-top:.75rem"><input type="checkbox" id="bkTg" style="${CB}"> Yedeği Telegram'a da gönder <span class="text-xs text-slate-500">(cihaz bozulsa bile kalır)</span></label>
   <p id="bkInfo" class="text-sm mt-3"></p>
   <div class="flex flex-wrap gap-2 mt-3">
-    <button id="bkNow" class="btn bg-emerald-600 hover:bg-emerald-500 text-white"><i class="fa-solid fa-download"></i>Şimdi yedekle</button>
-    <button id="bkRestore" class="btn bg-slate-800 hover:bg-slate-700"><i class="fa-solid fa-upload"></i>Yedekten geri yükle</button>
+    <button id="bkNow" class="btn bg-emerald-600 hover:bg-emerald-500 text-white"><i class="fa-solid fa-file-export"></i>Şimdi yedekle</button>
+    <button id="bkRestore" class="btn bg-slate-800 hover:bg-slate-700"><i class="fa-solid fa-file-import"></i>Yedekten geri yükle</button>
     <input id="bkFile" type="file" accept=".json,application/json" style="display:none">
   </div>
   <p class="text-xs text-slate-500 mt-3">Yedek dosyası; sürücüleri, giriş/çıkış kayıtlarını, tarifeyi, kara listeyi ve denetim kaydını içerir. Fotoğraf kanıtları ve admin şifresi dahil değildir. Yedekleme uygulama açıkken çalışır.</p>
 `);
 
-const ntCard = mkCard('<i class="fa-brands fa-telegram text-sky-400 mr-2"></i>Telefon bildirimleri', `
+const ntCard = mkCard('<i class="fa-regular fa-comment-dots text-sky-400 mr-2"></i>Telefon bildirimleri', `
   <p class="text-sm text-slate-400 mb-3">Önemli olaylarda telefonunuza mesaj gelir. Bildirimler uygulama açıkken gönderilir.</p>
   <label style="${CK}"><input type="checkbox" id="tgOn" style="${CB}"> <b>Telegram</b> ile bildir</label>
   <div class="grid sm:grid-cols-2 gap-3 mt-3">
@@ -2252,7 +2252,7 @@ const ntCard = mkCard('<i class="fa-brands fa-telegram text-sky-400 mr-2"></i>Te
   <p id="ntStatus" class="text-sm mt-3 text-slate-400"></p>
   <div class="flex flex-wrap gap-2 mt-3">
     <button id="ntSave" class="btn bg-emerald-600 hover:bg-emerald-500 text-white"><i class="fa-solid fa-floppy-disk"></i>Kaydet (admin)</button>
-    <button id="ntTest" class="btn bg-sky-600 hover:bg-sky-500 text-white"><i class="fa-regular fa-paper-plane"></i>Test mesajı gönder</button>
+    <button id="ntTest" class="btn bg-sky-600 hover:bg-sky-500 text-white"><i class="fa-regular fa-comment-dots"></i>Test mesajı gönder</button>
   </div>
 `);
 
@@ -2315,16 +2315,20 @@ g('ntTest').onclick = async () => {
   if(!f.tg.on && !f.wa.on) toast('Test gönderildi. Bildirimleri açıp Kaydet demeyi unutmayın.');
 };
 g('tgFind').onclick = async () => {
-  const token = g('tgTok').value.trim(); if(!token) return toast('Önce bot token girin.');
+  const token = g('tgTok').value.trim().replace(/\s+/g, ''); if(!token) return toast('Önce bot token girin.');
+  const st = g('ntStatus'), say = (msg, col) => { st.style.color = col; st.textContent = msg; };
+  let me;
+  try{ me = (await tgCall(token, 'getMe', {})).result; }
+  catch(e){ if(e.perm) return say('Token geçersiz görünüyor: BotFather\'dan kopyaladığınız token\'ı baştan sona, boşluksuz yapıştırın.', 'var(--bad)'); return say('Telegram\'a ulaşılamadı. İnternet bağlantısını kontrol edin.', 'var(--bad)'); }
   try{
-    const j = await tgCall(token, 'getUpdates', {limit: 30});
-    const u = j.result.slice().reverse().find(x => (x.message || x.channel_post || x.my_chat_member) && ((x.message || x.channel_post || x.my_chat_member).chat));
-    if(!u) return toast('Mesaj bulunamadı. Bota bir mesaj yazıp tekrar deneyin.');
-    const c = (u.message || u.channel_post || u.my_chat_member).chat;
-    g('tgChat').value = c.id; toast('Chat ID bulundu: ' + c.id + (c.title ? ' (' + c.title + ')' : c.first_name ? ' (' + c.first_name + ')' : ''));
-  }catch(e){ toast('Hata: ' + (e.message || 'token geçersiz olabilir')); }
+    const j = await tgCall(token, 'getUpdates', {limit: 50});
+    const pick = x => x.message || x.edited_message || x.channel_post || x.my_chat_member;
+    const u = j.result.slice().reverse().find(x => pick(x) && pick(x).chat);
+    if(!u) return say(`Token doğru (@${me.username}) ama bu bota henüz mesaj yazılmamış. Telegram'da @${me.username} botunu açıp Başlat/Start'a basın (veya "merhaba" yazın), sonra tekrar deneyin.`, 'var(--warn)');
+    const c = pick(u).chat, nm = c.title || c.first_name || c.username || '';
+    g('tgChat').value = c.id; say(`Chat ID bulundu: ${c.id}${nm ? ' (' + nm + ')' : ''}. Şimdi "Test mesajı gönder"e basın.`, 'var(--ok)');
+  }catch(e){ say('Hata: ' + (e.message || 'bilinmiyor'), 'var(--bad)'); }
 };
-
 
 /* =====================================================================
    4) GÜNDÜZ / GECE TEMASI (CSS <head> içinde, ilk boyamada uygulanır)
@@ -2346,7 +2350,7 @@ function applyTheme(){
 }
 function setMode(md){ try{ localStorage.setItem(TK, md); }catch(e){} applyTheme(); }
 themeBtn.onclick = () => setMode(resolveMode(getMode()) === 'light' ? 'dark' : 'light');
-const thCard = mkCard('<i class="fa-solid fa-circle-half-stroke mr-2" style="color:#a78bfa"></i>Görünüm', `
+const thCard = mkCard('<svg viewBox="0 0 24 24" width="16" height="16" class="mr-2" style="display:inline-block;vertical-align:-2px;fill:none;stroke:#a78bfa;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="#a78bfa"/></svg>Görünüm', `
   <p class="text-sm text-slate-400 mb-3">Gündüz teması güneş altında ekranı okumayı kolaylaştırır. "Otomatik" telefonunuzun ayarını izler.</p>
   <div id="thSeg" class="seg"><button type="button" data-m="auto">Otomatik</button><button type="button" data-m="light">Gündüz</button><button type="button" data-m="dark">Gece</button></div>`);
 pane.insertBefore(thCard, pane.firstElementChild);
