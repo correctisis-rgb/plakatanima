@@ -2156,14 +2156,14 @@ const insideN = () => park.filter(x => !x.exit).length;
 const capTxt = () => cfg.cap ? `${insideN()} / ${cfg.cap}` : String(insideN());
 function onPunch(r, plate){
   const d = drvOf(plate), now = Date.now();
-  if(r.type === 'entry' ? N.ev.black : N.ev.blackOut){
-    const b = bl.find(x => x.plate === plate);
-    if(b) notify(`🚫 KARA LİSTEDEKİ ARAÇ ${r.type === 'entry' ? 'GİRDİ' : 'ÇIKTI'}\nPlaka: ${fmt(plate)}\nSebep: ${b.note || '-'}\nSaat: ${fmtDT(now)}`);
+  const b = bl.find(x => x.plate === plate);   // kara listedeyse yalnızca kara liste mesajı gider, misafir mesajı gönderilmez
+  if(b && (r.type === 'entry' ? N.ev.black : N.ev.blackOut)){
+    notify(`🚫 KARA LİSTEDEKİ ARAÇ ${r.type === 'entry' ? 'GİRDİ' : 'ÇIKTI'}\nPlaka: ${fmt(plate)}\nSebep: ${b.note || '-'}\nSaat: ${fmtDT(now)}`);
   }
-  if(r.type === 'entry' && N.ev.guest && !d){
+  if(r.type === 'entry' && N.ev.guest && !d && !b){
     notify(`🚗 Misafir araç girişi\nPlaka: ${fmt(plate)}\nSaat: ${fmtDT(now)}\nİçerideki araç: ${capTxt()}`);
   }
-  if(r.type === 'exit' && N.ev.guestOut && !d){
+  if(r.type === 'exit' && N.ev.guestOut && !d && !b){
     const st = r.s || {};
     notify(`🚙 Misafir araç çıkışı\nPlaka: ${fmt(plate)}\nGiriş: ${fmtDT(st.entry)}\nÇıkış: ${fmtDT(now)}\nSüre: ${fmtDur(now - st.entry)}\nÜcret: ${money(st.fee || 0)}\nİçerideki araç: ${capTxt()}`);
   }
