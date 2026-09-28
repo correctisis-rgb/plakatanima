@@ -1342,7 +1342,7 @@ st.textContent = `
 #pnav b{background:#10b981;color:#022c22;border-radius:999px;font-size:.7rem;padding:0 .4rem;margin-left:.15rem}
 .pane{display:none!important}.pane.on{display:block!important}.pane.on.g2{display:grid!important}.stack>*+*{margin-top:1rem}.g2{display:grid;gap:1rem}
 @media(min-width:1024px){.g2{grid-template-columns:1fr 1fr;align-items:start}}
-@media(max-width:767px){#pnav{position:fixed;left:.5rem;right:.5rem;bottom:calc(.5rem + env(safe-area-inset-bottom,0px));top:auto;margin:0;z-index:45}#pnav button{flex-direction:column;gap:.15rem;font-size:.65rem;padding:.5rem .2rem}body{padding-bottom:6rem}#toast{bottom:calc(5.5rem + env(safe-area-inset-bottom,0px))!important}}
+@media(max-width:767px){#pnav{position:fixed;left:.5rem;right:.5rem;bottom:calc(.5rem + env(safe-area-inset-bottom,0px));top:auto;margin:0;z-index:45}#pnav button{flex-direction:column;gap:.15rem;font-size:.65rem;padding:.5rem .2rem}body{padding-bottom:calc(9rem + env(safe-area-inset-bottom,0px))!important}html{scroll-padding-bottom:10rem}#toast{bottom:calc(7.5rem + env(safe-area-inset-bottom,0px))!important}#pnav{background:rgba(15,23,42,.98)}#pnav button{position:relative}#pnav b{position:absolute;top:.1rem;left:55%;margin:0}}
 .seg{display:inline-flex;padding:.25rem;border-radius:.8rem;background:rgba(15,23,42,.9);border:1px solid rgba(148,163,184,.18)}
 .seg button{padding:.45rem 1rem;border-radius:.6rem;font-size:.85rem;font-weight:600;color:#94a3b8}.seg button.on{background:#1e293b;color:#fff}
 .vgrid{display:grid;gap:.75rem;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
@@ -1453,7 +1453,7 @@ try{ $('pCd').value = localStorage.getItem('pts_cd') || '60'; }catch(e){}
 if(!$('pCd').value) $('pCd').value = '60';
 $('pCd').onchange = () => { try{ localStorage.setItem('pts_cd', $('pCd').value); }catch(e){} hint(); };
 const getCd = () => (+$('pCd').value || 60) * 1000;
-const hint = () => { const p = document.querySelector('#modal p.text-xs'); if(p) p.textContent = `Kamera açık kalır, her araç otomatik kaydedilir. Aynı plaka en az ${$('pCd').selectedOptions[0].text} geçmeden ve araç kadrajdan çıkmadan tekrar okunmaz.`; };
+const hint = () => { const p = document.querySelector('#modal p.text-xs'); if(p) p.textContent = `Kamera açık kalır, her araç otomatik kaydedilir. Aynı plaka, kadrajda göründüğü sürece ve en son görülmesinden itibaren ${$('pCd').selectedOptions[0].text} geçmeden tekrar kaydedilmez.`; };
 hint();
 
 /* Sonuç kartı kamera penceresinin içinde görünsün */
@@ -1466,7 +1466,7 @@ $('btnClose').onclick = () => closeCam();
 $('modal').onclick = e => { if(e.target === $('modal')) closeCam(); };
 
 /* Sürekli tarama */
-let lastRead = {p: '', t: 0}, seenEmpty = true; const recent = {};
+const seen = {};  /* plaka -> en son görüldüğü an; süre son GÖRÜLMEDEN itibaren sayılır */
 liveTick = async function(){
   if(!liveActive) return;
   const v = $('video'); if(!v || !v.videoWidth) return;
@@ -1474,7 +1474,7 @@ liveTick = async function(){
   d.blue.forEach(b => cands.push({box: b.withStrip, reads: [b.withStrip, b.noStrip], kind: 'anchor'}));
   d.others.slice(0, 2).forEach(b => cands.push({box: b, reads: [b, padBox(b, .12, .25, det.canvas.width, det.canvas.height)], kind: 'crop'}));
   drawOverlay(cands[0] && cands[0].box, det);
-  if(!cands.length){ liveNoBoxTicks++; if(liveNoBoxTicks > 6) liveReset(); if(liveNoBoxTicks >= 4) seenEmpty = true; setLiveStatus('Araç ve plaka aranıyor...'); return; }
+  if(!cands.length){ liveNoBoxTicks++; if(liveNoBoxTicks > 6) liveReset(); setLiveStatus('Araç ve plaka aranıyor...'); return; }
   liveNoBoxTicks = 0;
   if(busy) return;
   busy = true;
@@ -1489,17 +1489,13 @@ liveTick = async function(){
     R.forEach((P, i) => liveV.add(P, list[i].kind === 'anchor' ? 'live' : 'crop'));
     const ks = liveV.ranked(), best = ks[0];
     if(liveV.enough() || (best && liveV.found[best] >= 110)){
-      const now = Date.now(), wait = (recent[best] || 0) + getCd() - now;
-      if(wait > 0 || (lastRead.p === best && !seenEmpty)){
-        setLiveStatus(`${fmt(best)} az önce okundu, tekrar okunmayacak` + (wait > 0 ? ` (${Math.ceil(wait / 1000)} sn)` : ' (araç kadrajdan çıkmalı)'));
-        liveReset(); return;
-      }
-      recent[best] = now; lastRead = {p: best, t: now}; seenEmpty = false;
+      const now = Date.now(), gap = now - (seen[best] || 0); seen[best] = now;
+      if(gap < getCd()){ setLiveStatus(`${fmt(best)} kadrajda / az önce görüldü, tekrar kaydedilmeyecek`); liveReset(); return; }
       showPreview(shot); lastRaw = liveV.raw; lastCandidates = ks; lastHasEvidence = true;
       handleResult(best, liveV.raw, ks, true);
       setLiveStatus(`✓ ${fmt(best)} okundu, sonraki araç bekleniyor`);
       liveReset();
-    }else if(best){ setLiveStatus(`Aday okunuyor: ${fmt(best)} — netleşmesi bekleniyor...`); }
+    }else if(best){ if(seen[best]) seen[best] = Date.now(); setLiveStatus(`Aday okunuyor: ${fmt(best)} — netleşmesi bekleniyor...`); }
   }catch(e){ console.error(e); }
   finally{ busy = false; }
 };
