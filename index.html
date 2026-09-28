@@ -1377,7 +1377,7 @@ const _hr = handleResult; handleResult = function(plate, raw, c, ev){
         }
         audit('BULANIK EŞLEŞME', m.plate, 'okunan=' + plate + '; fark=' + m.edits + (m.viaAlt ? '; alternatif okuma' : ''));
         force = false; _hr(m.plate, raw, c, ev);
-        $('result').insertAdjacentHTML('afterbegin', `<div class="rounded-xl border border-sky-500/40 bg-sky-500/10 p-3 mb-3 text-sm text-slate-200"><i class="fa-solid fa-wand-magic-sparkles text-sky-400 mr-2"></i>Okunan <b>${esc(fmt(plate))}</b>, içerideki <b>${esc(fmt(m.plate))}</b> ile eşleştirildi${m.edits ? ` (${m.edits} karakter farkı)` : ''}. <button class="chip ml-1" onclick="pv2Diff('${plate}')">Farklı araç, yeni giriş yap</button></div>`);
+        $('result').insertAdjacentHTML('afterbegin', `<div class="rounded-xl p-3 mb-3 text-sm text-slate-200" style="border:1px solid rgba(56,189,248,.4);background:rgba(56,189,248,.1)"><i class="fa-solid fa-wand-magic-sparkles text-sky-400 mr-2"></i>Okunan <b>${esc(fmt(plate))}</b>, içerideki <b>${esc(fmt(m.plate))}</b> ile eşleştirildi${m.edits ? ` (${m.edits} karakter farkı)` : ''}. <button class="chip ml-1" onclick="pv2Diff('${plate}')">Farklı araç, yeni giriş yap</button></div>`);
         return;
       }
     }
@@ -1634,6 +1634,264 @@ liveTick = async function(){
   }catch(e){ console.error(e); }
   finally{ busy = false; }
 };
+})();
+
+</script>
+<script>
+/* ===== PTS v3: IP kamera modülü (JPEG anlık görüntü / MJPEG / HLS) ===== */
+(() => {
+const CK = 'plk_ipcams_v1', AK = 'plk_ipcam_auto_v1';
+const HLS_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js';
+let cams = []; try{ cams = JSON.parse(localStorage.getItem(CK)) || []; if(!Array.isArray(cams)) cams = []; }catch(e){ cams = []; }
+const saveCams = () => { try{ localStorage.setItem(CK, JSON.stringify(cams)); }catch(e){} };
+const rt = {};                       // çalışan kameralar: id -> {src, V, seen, noBox, msg}
+let mon = null, idx = 0, wl = null;
+const cd = () => (+($('pCd') && $('pCd').value) || 60) * 1000;
+const ROLES = {auto: 'Giriş + Çıkış (otomatik)', in: 'Giriş kapısı', out: 'Çıkış kapısı'};
+const TYPES = {auto: 'Otomatik algıla', jpeg: 'JPEG anlık görüntü', mjpeg: 'MJPEG akış', hls: 'HLS (.m3u8)'};
+
+const kindOf = u => {
+  const s = String(u || '').trim().toLowerCase();
+  if(/^rtsp/.test(s)) return 'rtsp';
+  if(/\.m3u8(\?|$)/.test(s)) return 'hls';
+  if(/mjpe?g|video\.cgi|action=stream|\/videostream|\/video(\?|$)/.test(s)) return 'mjpeg';
+  return 'jpeg';
+};
+const hasCreds = u => /^[a-z]+:\/\/[^\/?#]*@/i.test(u);
+const mkId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
+/* ---------- Kaynak: her tür, tek bir "son kare" kanvasına yazar ---------- */
+function makeSource(cam){
+  const type = cam.type === 'auto' ? kindOf(cam.url) : cam.type, url = cam.url;
+  const S = {type, cv: document.createElement('canvas'), ok: false, t: 0, tChange: Date.now(), err: '', stopped: false, sigv: null, restart: () => {}};
+  const cx = S.cv.getContext('2d'), sc = document.createElement('canvas'); sc.width = 16; sc.height = 9;
+  const sx = sc.getContext('2d', {willReadFrequently: true});
+  const sig = () => { const d = sx.getImageData(0, 0, 16, 9).data; let h = 0; for(let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + d[i+1] * 3 + d[i+2] * 7) >>> 0; return h; };
+  const put = (el, w, h) => {
+    if(!w || !h) return;
+    const k = Math.min(1, 1920 / w), cw = Math.round(w * k), ch = Math.round(h * k);
+    if(S.cv.width !== cw || S.cv.height !== ch){ S.cv.width = cw; S.cv.height = ch; }
+    cx.drawImage(el, 0, 0, cw, ch);
+    sx.drawImage(S.cv, 0, 0, 16, 9); const g = sig(); if(g !== S.sigv){ S.sigv = g; S.tChange = Date.now(); }
+    S.ok = true; S.t = Date.now(); S.err = '';
+  };
+  const bust = u => u + (u.includes('?') ? '&' : '?') + '_=' + Date.now();
+  const netErr = e => (e && e.name === 'TypeError') ? 'Ulaşılamadı veya CORS izni yok (köprü gerekir)' : (e && e.message) || 'Bağlantı hatası';
+
+  if(type === 'jpeg'){
+    (async () => {
+      while(!S.stopped){
+        const t0 = Date.now();
+        try{
+          const r = await fetch(bust(url), {cache: 'no-store', mode: 'cors'});
+          if(!r.ok) throw new Error('HTTP ' + r.status);
+          const b = await createImageBitmap(await r.blob());
+          put(b, b.width, b.height); if(b.close) b.close();
+        }catch(e){ S.err = netErr(e); }
+        await new Promise(r => setTimeout(r, Math.max(150, 500 - (Date.now() - t0))));
+      }
+    })();
+  }else if(type === 'mjpeg'){
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    const connect = () => { if(!S.stopped) img.src = bust(url); };
+    img.onerror = () => { if(S.stopped) return; S.err = 'Akış açılamadı (adres veya CORS izni?)'; setTimeout(connect, 3000); };
+    S.restart = connect; connect();
+    S.timer = setInterval(() => { if(img.naturalWidth){ try{ put(img, img.naturalWidth, img.naturalHeight); }catch(e){ S.err = 'Görüntü okunamadı (CORS)'; } } }, 250);
+    S.el = img;
+  }else if(type === 'hls'){
+    const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.autoplay = true; v.crossOrigin = 'anonymous'; S.el = v;
+    const start = async () => {
+      if(S.stopped) return;
+      try{
+        if(v.canPlayType('application/vnd.apple.mpegurl')) v.src = url;
+        else{
+          await loadScript(HLS_URL);
+          if(!window.Hls || !Hls.isSupported()){ S.err = 'Bu tarayıcı HLS oynatamıyor'; return; }
+          if(S.hls) S.hls.destroy();
+          S.hls = new Hls({lowLatencyMode: true, liveSyncDurationCount: 2, maxBufferLength: 6});
+          S.hls.on(Hls.Events.ERROR, (ev, d) => { if(d.fatal){ S.err = 'HLS hatası: ' + d.details; setTimeout(start, 3000); } });
+          S.hls.loadSource(url); S.hls.attachMedia(v);
+        }
+        v.play().catch(() => {});
+      }catch(e){ S.err = 'HLS başlatılamadı: ' + (e.message || e); setTimeout(start, 4000); }
+    };
+    S.restart = start; start();
+    S.timer = setInterval(() => { if(v.videoWidth && !v.paused){ try{ put(v, v.videoWidth, v.videoHeight); }catch(e){ S.err = 'Görüntü okunamadı (CORS)'; } } }, 250);
+  }else{ S.err = 'Bu adres tarayıcıda oynatılamaz (RTSP için köprü gerekir)'; }
+  S.frame = () => { if(!S.ok) return null; const c = document.createElement('canvas'); c.width = S.cv.width; c.height = S.cv.height; c.getContext('2d').drawImage(S.cv, 0, 0); return c; };
+  S.stop = () => {
+    S.stopped = true; clearInterval(S.timer);
+    try{ if(S.hls) S.hls.destroy(); if(S.el){ if(S.el.pause) S.el.pause(); S.el.removeAttribute('src'); if(S.el.load) S.el.load(); } }catch(e){}
+  };
+  return S;
+}
+
+/* ---------- İzleme döngüsü: kameralar sırayla taranır, tek OCR motoru paylaşılır ---------- */
+async function monTick(){
+  if(!mon) return;
+  const ids = Object.keys(rt); if(!ids.length) return;
+  const id = ids[idx++ % ids.length], R = rt[id], c = cams.find(x => x.id === id); if(!R || !c) return;
+  const S = R.src, now = Date.now();
+  if(!S.ok || now - S.t > 8000){ R.msg = S.err || 'Bağlanıyor...'; return; }
+  if(now - S.tChange > 25000){ R.msg = 'Görüntü donmuş, yeniden bağlanılıyor...'; S.tChange = now; S.restart(); return; }
+  const cv = S.cv, d = detectPlates(cv, 960), cands = [];
+  d.blue.forEach(b => cands.push({reads: [b.withStrip, b.noStrip], kind: 'live'}));
+  d.others.slice(0, 2).forEach(b => cands.push({reads: [b, padBox(b, .12, .25, cv.width, cv.height)], kind: 'crop'}));
+  if(!cands.length){ R.noBox++; if(R.noBox > 6) R.V = makeVoter(knownPlates); R.msg = 'Araç / plaka aranıyor...'; return; }
+  R.noBox = 0;
+  if(busy) return;
+  busy = true;
+  try{
+    if(!session){ R.msg = 'OCR motoru hazırlanıyor...'; await getSession(); }
+    if(!rt[id]) return;
+    const shot = S.frame(); if(!shot) return;
+    const list = []; cands.slice(0, 2).forEach(x => x.reads.forEach(b => list.push({b, kind: x.kind})));
+    const res = await readBoxes(shot, list.map(x => x.b));
+    if(!rt[id]) return;
+    res.forEach((P, i) => R.V.add(P, list[i].kind));
+    const ks = R.V.ranked(), best = ks[0];
+    if(R.V.enough() || (best && R.V.found[best] >= 110)){
+      const t = Date.now(), gap = t - (R.seen[best] || 0); R.seen[best] = t;
+      if(gap < cd()){ R.msg = `${fmt(best)} kadrajda / az önce görüldü`; R.V = makeVoter(knownPlates); return; }
+      fire(c, R, shot, best, ks); R.V = makeVoter(knownPlates);
+    }else if(best){ if(R.seen[best]) R.seen[best] = Date.now(); R.msg = `Aday okunuyor: ${fmt(best)}...`; }
+  }catch(e){ console.error(e); R.msg = 'Okuma hatası'; }
+  finally{ busy = false; }
+}
+function fire(c, R, shot, best, ks){
+  const pm = $('pMode'), prev = pm.value; pm.value = c.role || 'auto';
+  try{
+    showPreview(shot); lastRaw = R.V.raw; lastCandidates = ks; lastHasEvidence = true;
+    handleResult(best, R.V.raw, ks, true);
+    $('result').insertAdjacentHTML('afterbegin', `<div style="display:inline-block;background:#1e293b;border:1px solid #334155;color:#e2e8f0;font-size:.75rem;padding:.2rem .6rem;border-radius:999px;margin-bottom:.5rem"><i class="fa-solid fa-video" style="margin-right:.4rem;color:#38bdf8"></i>${esc(c.name)} · ${esc(ROLES[c.role] || '')}</div>`);
+    toast(`${c.name}: ${fmt(best)}`);
+  }finally{ pm.value = prev; }
+  R.msg = `✓ ${fmt(best)} okundu`;
+}
+
+/* ---------- Başlat / durdur ---------- */
+async function wake(){ try{ if(navigator.wakeLock && !wl) wl = await navigator.wakeLock.request('screen'); }catch(e){} }
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && mon){ wl = null; wake(); } });
+function startAll(){
+  if(!cams.length) return toast('Önce bir kamera ekleyin.');
+  audioCtx();
+  cams.forEach(c => { if(!rt[c.id]) rt[c.id] = {src: makeSource(c), V: makeVoter(knownPlates), seen: {}, noBox: 0, msg: 'Bağlanıyor...'}; });
+  if(!mon) mon = setInterval(monTick, 350);
+  getSession().catch(() => {}); wake(); ui();
+}
+function stopAll(){
+  clearInterval(mon); mon = null;
+  Object.keys(rt).forEach(id => { rt[id].src.stop(); delete rt[id]; });
+  try{ wl && wl.release(); }catch(e){} wl = null; ui();
+}
+
+/* ---------- Arayüz (Ayarlar sekmesi) ---------- */
+const box = 'background:#0f172a;border:1px solid #1e293b;border-radius:.75rem;padding:.75rem';
+const sec = document.createElement('section'); sec.id = 'ipcamSec'; sec.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5';
+sec.innerHTML = `<h2 class="font-semibold text-white mb-2"><i class="fa-solid fa-video text-sky-400 mr-2"></i>IP kameralar <span class="text-slate-500 font-normal text-xs">(admin)</span></h2>
+<p class="text-xs text-slate-400 mb-3">Giriş ve çıkış kapısı için ayrı kamera tanımlayın; hepsi arka planda aynı anda izlenir. Tarayıcı RTSP oynatamaz: RTSP kameralar için aşağıdaki "Köprü kurulumu" bölümüne bakın.</p>
+<div class="grid sm:grid-cols-2 gap-3">
+  <input id="icName" class="inp" placeholder="Kamera adı (Ana kapı giriş)">
+  <select id="icRole" class="inp">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+  <input id="icUrl" class="inp sm:col-span-2" style="grid-column:1/-1" placeholder="Adres: http://192.168.1.50:1984/api/frame.jpeg?src=kapi" autocapitalize="off" spellcheck="false">
+  <select id="icType" class="inp">${Object.entries(TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+  <button id="icAdd" class="btn bg-emerald-600 hover:bg-emerald-500 text-white"><i class="fa-solid fa-plus"></i>Kamera ekle</button>
+</div>
+<div id="icList" style="display:grid;gap:.6rem;margin-top:.9rem"></div>
+<div class="flex flex-wrap gap-2 mt-3 items-center">
+  <button id="icRun" class="btn bg-sky-600 hover:bg-sky-500 text-white"><i class="fa-solid fa-play"></i>İzlemeyi başlat</button>
+  <label class="text-xs text-slate-400" style="display:flex;align-items:center;gap:.4rem"><input id="icAuto" type="checkbox"> Sayfa açılınca otomatik başlat</label>
+</div>
+<p id="icHint" class="text-xs text-slate-500 mt-2"></p>
+<details style="margin-top:1rem;${box}"><summary class="text-sm text-slate-300" style="cursor:pointer">Köprü kurulumu (RTSP / CORS / şifreli kameralar)</summary>
+  <p class="text-xs text-slate-400 mt-2">Kameranın RTSP adresini yazın; <b>go2rtc</b> için ayar dosyasını ve bu sayfaya girilecek adresleri üretelim.</p>
+  <div class="grid sm:grid-cols-2 gap-2 mt-2">
+    <input id="gRtsp" class="inp" style="grid-column:1/-1" placeholder="rtsp://kullanici:sifre@192.168.1.64:554/Streaming/Channels/101" autocapitalize="off" spellcheck="false">
+    <input id="gName" class="inp" value="kapi" placeholder="Akış adı (kapi)">
+    <input id="gHost" class="inp" placeholder="Köprü bilgisayarın IP adresi">
+  </div>
+  <pre id="gOut" style="white-space:pre-wrap;word-break:break-all;background:#020617;border-radius:.5rem;padding:.6rem;margin-top:.6rem;font-size:.72rem;color:#cbd5e1;display:none"></pre>
+  <button id="gCopy" class="btn bg-slate-800 hover:bg-slate-700 mt-2" style="display:none"><i class="fa-solid fa-copy"></i>Ayar dosyasını kopyala</button>
+</details>`;
+$('pane-set').append(sec);
+$('icAuto').checked = (() => { try{ return localStorage.getItem(AK) === '1'; }catch(e){ return false; } })();
+$('icAuto').onchange = () => { try{ localStorage.setItem(AK, $('icAuto').checked ? '1' : '0'); }catch(e){} };
+
+function rowHtml(c){
+  const R = rt[c.id], S = R && R.src, on = !!R, live = on && S.ok && Date.now() - S.t < 8000;
+  const dot = !on ? '#64748b' : live ? '#10b981' : '#f59e0b', st = !on ? 'Durdu' : (R.msg || '');
+  return `<div style="${box};display:flex;gap:.7rem;align-items:center" data-cid="${c.id}">
+    <canvas width="128" height="72" data-th="${c.id}" style="width:96px;height:54px;background:#000;border-radius:.4rem;flex-shrink:0"></canvas>
+    <div style="min-width:0;flex:1">
+      <div style="display:flex;align-items:center;gap:.45rem"><span data-dot style="width:.6rem;height:.6rem;border-radius:999px;background:${dot};flex-shrink:0"></span><b class="text-white text-sm" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</b><span class="text-xs text-slate-400" style="white-space:nowrap">· ${esc(ROLES[c.role] || '')}</span></div>
+      <div class="text-xs text-slate-500" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.url)}">${esc(c.url)}</div>
+      <div data-st class="text-xs text-slate-400">${esc(st)}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.3rem">
+      <button class="chip" onclick="ipcamTest('${c.id}')">Dene</button>
+      <button class="chip" onclick="ipcamDel('${c.id}')">Sil</button>
+    </div></div>`;
+}
+function ui(){
+  $('icList').innerHTML = cams.length ? cams.map(rowHtml).join('') : '<div class="text-sm text-slate-500">Henüz kamera eklenmedi.</div>';
+  const on = !!mon;
+  $('icRun').innerHTML = on ? '<i class="fa-solid fa-stop"></i>İzlemeyi durdur' : '<i class="fa-solid fa-play"></i>İzlemeyi başlat';
+  $('icRun').className = 'btn text-white ' + (on ? 'bg-red-600 hover:bg-red-500' : 'bg-sky-600 hover:bg-sky-500');
+  $('icHint').textContent = on ? 'İzleme açık. Sonuçlar "Ana ekran" sekmesinde görünür; bu sekmeyi/sayfayı açık tutun.' : '';
+}
+setInterval(() => {   // canlı durum + küçük resimler
+  document.querySelectorAll('[data-cid]').forEach(el => {
+    const c = cams.find(x => x.id === el.dataset.cid), R = c && rt[c.id]; if(!R) return;
+    const S = R.src, live = S.ok && Date.now() - S.t < 8000;
+    el.querySelector('[data-dot]').style.background = live ? '#10b981' : '#f59e0b';
+    el.querySelector('[data-st]').textContent = R.msg || '';
+    const th = el.querySelector('canvas'); if(live){ try{ th.getContext('2d').drawImage(S.cv, 0, 0, th.width, th.height); }catch(e){} }
+  });
+}, 1000);
+
+$('icAdd').onclick = async () => {
+  const name = $('icName').value.trim(), url = $('icUrl').value.trim(), role = $('icRole').value, type = $('icType').value;
+  if(!name) return toast('Kamera adını girin.');
+  if(!/^(https?|rtsp):\/\//i.test(url)) return toast('Adres http://, https:// veya rtsp:// ile başlamalı.');
+  if(kindOf(url) === 'rtsp'){ $('gRtsp').value = url; $('icUrl').closest('section').querySelector('details').open = true; return toast('RTSP tarayıcıda açılmaz. Aşağıdaki köprü ayarını üretip oradaki http adresini girin.'); }
+  if(hasCreds(url)) return toast('Adreste kullanıcı/şifre olamaz (tarayıcı engeller). Köprü (go2rtc) kullanın.');
+  if(location.protocol === 'https:' && /^http:/i.test(url)) toast('Uyarı: sayfa https, kamera http. Tarayıcı engelleyebilir; sayfayı http/yerel açın veya https köprü kullanın.');
+  if(!await adminOk()) return;
+  cams.push({id: mkId(), name, url, role, type}); saveCams();
+  ['icName', 'icUrl'].forEach(i => $(i).value = '');
+  if(mon){ const c = cams[cams.length - 1]; rt[c.id] = {src: makeSource(c), V: makeVoter(knownPlates), seen: {}, noBox: 0, msg: 'Bağlanıyor...'}; }
+  ui();
+};
+window.ipcamDel = async id => {
+  if(!await adminOk()) return;
+  if(rt[id]){ rt[id].src.stop(); delete rt[id]; }
+  cams = cams.filter(c => c.id !== id); saveCams(); ui();
+};
+window.ipcamTest = async id => {
+  const c = cams.find(x => x.id === id); if(!c) return;
+  if(rt[id]) return toast(rt[id].src.ok ? `${c.name}: bağlı (${rt[id].src.cv.width}×${rt[id].src.cv.height})` : `${c.name}: ${rt[id].src.err || 'bağlanıyor...'}`);
+  toast('Bağlantı deneniyor...');
+  const S = makeSource(c), t0 = Date.now();
+  while(Date.now() - t0 < 9000 && !S.ok) await new Promise(r => setTimeout(r, 250));
+  toast(S.ok ? `${c.name}: bağlantı başarılı (${S.cv.width}×${S.cv.height})` : `${c.name}: ${S.err || 'yanıt yok'}`);
+  S.stop();
+};
+$('icRun').onclick = () => mon ? stopAll() : startAll();
+
+/* go2rtc ayar üretici */
+const gen = () => {
+  const r = $('gRtsp').value.trim(), n = ($('gName').value.trim() || 'kapi').replace(/[^\w-]/g, ''), h = $('gHost').value.trim() || location.hostname || 'BILGISAYAR_IP';
+  const out = $('gOut'), cp = $('gCopy');
+  if(!/^(rtsp|http)s?:\/\//i.test(r)){ out.style.display = cp.style.display = 'none'; return; }
+  const y = `streams:\n  ${n}: ${r}\napi:\n  listen: ":1984"\n  origin: "*"\n`;
+  out.textContent = `# go2rtc.yaml\n${y}\n# Bu sayfaya girilecek adresler (kamera ekle):\nJPEG (önerilen): http://${h}:1984/api/frame.jpeg?src=${n}\nMJPEG akış:      http://${h}:1984/api/stream.mjpeg?src=${n}\nHLS:             http://${h}:1984/api/stream.m3u8?src=${n}`;
+  out.style.display = cp.style.display = ''; cp.dataset.y = y;
+};
+['gRtsp', 'gName', 'gHost'].forEach(i => $(i).oninput = gen);
+$('gCopy').onclick = async () => { try{ await navigator.clipboard.writeText($('gCopy').dataset.y); toast('Kopyalandı.'); }catch(e){ toast('Kopyalanamadı, metni elle seçin.'); } };
+
+ui();
+if($('icAuto').checked && cams.length) setTimeout(startAll, 1500);
 })();
 
 </script>
