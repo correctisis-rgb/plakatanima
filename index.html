@@ -307,6 +307,46 @@ function contactBtns(phone, size){
   </span>`;
 }
 
+/* ---------- Bulanık plaka eşleştirme (OCR hatası toleransı) ----------
+   Ağırlıklı düzenleme mesafesi: görsel olarak karışan çiftler (O/0, B/8, S/5, I/1...) yarım puan, diğer farklar 1 puan.
+   Tolerans plaka uzunluğuna göre: 8+ karakter -> 2 hata (ör. 1 harf + 1 rakam), 7 -> 2 hata (en az biri karışan çift), 5-6 -> 1 hata. */
+const CONF = new Set();
+['0O','0D','0Q','1I','1L','2Z','5S','6G','8B','7T','UV','CG','EF','PR','MN','HN','KX'].forEach(p => { CONF.add(p); CONF.add(p[1] + p[0]); });
+function plateDist(a, b){
+  const n = a.length, m = b.length, C = [], E = [];
+  for(let i = 0; i <= n; i++){ C.push(new Array(m + 1).fill(0)); E.push(new Array(m + 1).fill(0)); }
+  for(let i = 1; i <= n; i++){ C[i][0] = i; E[i][0] = i; }
+  for(let j = 1; j <= m; j++){ C[0][j] = j; E[0][j] = j; }
+  for(let i = 1; i <= n; i++) for(let j = 1; j <= m; j++){
+    const same = a[i-1] === b[j-1], sc = same ? 0 : (CONF.has(a[i-1] + b[j-1]) ? .5 : 1);
+    let best = [C[i-1][j-1] + sc, E[i-1][j-1] + (same ? 0 : 1)];
+    for(const o of [[C[i-1][j] + 1, E[i-1][j] + 1], [C[i][j-1] + 1, E[i][j-1] + 1]]) if(o[0] < best[0] || (o[0] === best[0] && o[1] < best[1])) best = o;
+    C[i][j] = best[0]; E[i][j] = best[1];
+  }
+  return {cost: C[n][m], edits: E[n][m]};
+}
+function plateNear(a, b){
+  if(a === b) return {cost: 0, edits: 0};
+  if(Math.abs(a.length - b.length) > 1) return null;
+  const L = Math.min(a.length, b.length), d = plateDist(a, b), maxE = L >= 8 ? 2 : L === 7 ? 2 : L >= 5 ? 1 : 0;
+  if(d.edits > maxE) return null;
+  if(L === 7 && d.edits === 2 && d.cost > 1.5) return null;
+  return d;
+}
+/* Okunan plakayı OTOPARKTA İÇERİDEKİ araçlarla karşılaştırır. Modelin alternatif okumalarından biri birebir içerideki
+   bir araçsa (2. okuma) veya fark toleransın içindeyse eşleşme döner. Birden çok eşit yakın araç varsa ambiguous=true. */
+function matchInside(plate, cands){
+  const inside = park.filter(s => !s.exit).map(s => s.plate);
+  if(!inside.length) return null;
+  if(inside.includes(plate)) return {plate, cost: 0, edits: 0, exact: true};
+  for(const a of (cands || []).filter(x => x !== plate).slice(0, 3)) if(inside.includes(a)) return {plate: a, cost: 0, edits: 0, exact: true, viaAlt: true};
+  const sc = [];
+  for(const p of inside){ const d = plateNear(plate, p); if(d) sc.push({plate: p, cost: d.cost, edits: d.edits}); }
+  if(!sc.length) return null;
+  sc.sort((x, y) => x.cost - y.cost || x.edits - y.edits);
+  return {plate: sc[0].plate, cost: sc[0].cost, edits: sc[0].edits, ambiguous: sc.length > 1 && sc[1].cost - sc[0].cost < .5};
+}
+
 /*<<CORE*/
 /* =====================================================================
    Türkiye plaka kuralları + model çıktısının kurallı çözümü
@@ -623,7 +663,7 @@ function setStatus(t, pct){
   $('scanOverlayText').textContent = t;
   if(pct != null) $('scanOverlayBar').style.width = pct + '%';
 }
-const knownPlates = () => drivers.map(d => norm(d.plate));
+const knownPlates = () => [...new Set([...drivers.map(d => norm(d.plate)), ...park.filter(s => !s.exit).map(s => s.plate)])];
 let lastRaw = '', lastCandidates = [], lastHasEvidence = true;
 
 async function scan(src){
@@ -686,6 +726,21 @@ async function scan(src){
         }
         const R2 = [best.P].concat(await readBoxes(cv, jb)), sc2 = R2.map(P => { const c = decodeTR(P, 1)[0]; return c ? c.sc : -1e9; }), top = Math.max(...sc2);
         R2.forEach((P, i) => { if(sc2[i] >= top - 2.5) V.add(P, 'slide'); });
+      }
+    }
+    // 4) İKİNCİ OKUMA: sonuç içerideki/kayıtlı bir plakayla birebir örtüşmüyorsa aynı bölgeyi kaydırılmış/ölçeklenmiş kırpımlarla
+    //    yeniden oku; iki okuma oylamada anlık karşılaştırılır (tutarlı olan plaka öne çıkar).
+    const solid = () => { const r = V.ranked(); return r.length && knownPlates().includes(r[0]) && V.enough(); };
+    if(V.ranked().length && !solid()){
+      const base = blue.length ? blue[0].withStrip : others.length ? others[0] : null;
+      if(base){
+        setStatus('İkinci okuma yapılıyor...', 92); await yieldUI();
+        const jb = [];
+        for(const sc of [1, 1.1, 1.2]) for(const dx of [-.06, .06]) for(const dy of [-.1, .1]){
+          const nw = base.w * sc, nh = base.h * sc;
+          jb.push({x: base.x + base.w / 2 - nw / 2 + dx * base.w, y: base.y + base.h / 2 - nh / 2 + dy * base.h, w: nw, h: nh});
+        }
+        (await readBoxes(cv, jb)).forEach(P => V.add(P, 'crop'));
       }
     }
     setStatus('Tarama tamamlandı.', null);
@@ -1274,7 +1329,24 @@ const _hr = handleResult; handleResult = function(plate, raw, c, ev){
   ctx = {raw, c};
   if(plate && !force){
     const known = drivers.some(d => norm(d.plate) === plate) || park.some(s => s.plate === plate && !s.exit);
-    const near = known ? [] : [...new Set([...drivers.map(d => norm(d.plate)), ...park.filter(s => !s.exit).map(s => s.plate)])].filter(x => x !== plate && lev1(plate, x));
+    /* Otomatik bulanık eşleşme: okunan plaka kayıtsızsa ve içerideki bir aracın plakasına tolerans dahilinde benziyorsa (1 harf + 1 rakam hatası),
+       aynı araç sayılıp ÇIKIŞ işlenir. Manuel düzeltme ve "Sadece GİRİŞ" modunda devreye girmez. */
+    if(!known && !man && $('pMode').value !== 'in'){
+      const m = matchInside(plate, c);
+      if(m && !m.ambiguous){
+        const s = park.find(x => x.plate === m.plate && !x.exit);
+        if(s && Date.now() - s.entry < 30000){   // az önce giriş yapan aracın tekrar (yanlış) okunması
+          audit('TEKRAR OKUMA', m.plate, 'okunan=' + plate);
+          toast(`${fmt(plate)} az önce giriş yapan ${fmt(m.plate)} ile aynı araç sayıldı, tekrar kaydedilmedi.`);
+          return;
+        }
+        audit('BULANIK EŞLEŞME', m.plate, 'okunan=' + plate + '; fark=' + m.edits + (m.viaAlt ? '; alternatif okuma' : ''));
+        force = false; _hr(m.plate, raw, c, ev);
+        $('result').insertAdjacentHTML('afterbegin', `<div class="rounded-xl border border-sky-500/40 bg-sky-500/10 p-3 mb-3 text-sm text-slate-200"><i class="fa-solid fa-wand-magic-sparkles text-sky-400 mr-2"></i>Okunan <b>${esc(fmt(plate))}</b>, içerideki <b>${esc(fmt(m.plate))}</b> ile eşleştirildi${m.edits ? ` (${m.edits} karakter farkı)` : ''}. <button class="chip ml-1" onclick="pv2Diff('${plate}')">Farklı araç, yeni giriş yap</button></div>`);
+        return;
+      }
+    }
+    const near = known ? [] : [...new Set([...drivers.map(d => norm(d.plate)), ...park.filter(s => !s.exit).map(s => s.plate)])].filter(x => x !== plate && plateNear(plate, x));
     if(near.length){
       const nm = x => { const d = drivers.find(d => norm(d.plate) === x); return d ? d.name : 'içeride'; };
       $('result').innerHTML = `<div class="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5"><p class="text-amber-300 font-semibold mb-1"><i class="fa-solid fa-circle-question mr-2"></i>Plaka doğrulama</p><p class="text-sm text-slate-300 mb-3">Okunan <b>${esc(fmt(plate))}</b> kayıtlı değil, ama benzer bir plaka var. Hangisi doğru?</p><div class="flex flex-wrap gap-2">${near.map(x => `<button class="btn bg-sky-600 hover:bg-sky-500 text-white" onclick="pv2Pick('${x}',0)">${esc(fmt(x))} · ${esc(nm(x))}</button>`).join('')}<button class="btn bg-slate-800 hover:bg-slate-700" onclick="pv2Pick('${plate}',1)">Hayır, ${esc(fmt(plate))} (misafir) devam</button></div></div>`;
@@ -1284,6 +1356,7 @@ const _hr = handleResult; handleResult = function(plate, raw, c, ev){
   }
   force = false; return _hr(plate, raw, c, ev);
 };
+window.pv2Diff = p => { undoLast(); pv2Pick(p, 1); };
 window.pv2Pick = (p, f) => { force = !!f; man = true; try{ handleResult(p, ctx.raw, ctx.c, true); }finally{ man = false; force = false; } };
 for(const n of ['manualLookup', 'chooseCandidate']){ const o = window[n]; window[n] = function(){ man = true; try{ return o.apply(this, arguments); }finally{ man = false; } }; }
 
