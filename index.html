@@ -1335,14 +1335,19 @@ loadKeys().then(purge); setInterval(purge, 36e5); renderLog();
 (() => {
 const st = document.createElement('style');
 st.textContent = `
-#pnav{display:flex;gap:.35rem;padding:.35rem;border-radius:1rem;background:rgba(15,23,42,.92);border:1px solid rgba(148,163,184,.18);margin-bottom:1rem;position:sticky;top:.5rem;z-index:40;backdrop-filter:blur(8px)}
-#pnav button{flex:1;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.65rem .4rem;border-radius:.7rem;color:#94a3b8;font-size:.9rem;font-weight:600;transition:.15s}
-#pnav button:hover{color:#fff}#pnav button.on{background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;box-shadow:0 6px 16px -6px rgba(14,165,233,.6)}
-#pnav svg{width:1.2rem;height:1.2rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
-#pnav b{background:#10b981;color:#022c22;border-radius:999px;font-size:.7rem;padding:0 .4rem;margin-left:.15rem}
+.pts-bar{position:sticky!important;top:env(safe-area-inset-top,0px);z-index:40;background:linear-gradient(135deg,rgba(14,165,233,.16),rgba(99,102,241,.12)),#0b1224!important}
+html{scroll-padding-top:5.5rem}
+#hb{width:2.6rem;height:2.6rem;flex-shrink:0;border-radius:.8rem;display:grid;place-items:center;background:rgba(148,163,184,.16);color:#fff}
+#hb svg,#pnav svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}#hb svg{width:1.4rem;height:1.4rem}#pnav svg{width:1.25rem;height:1.25rem}
+@media(max-width:640px){.pts-logo{display:none}}
+#pov{position:fixed;inset:0;z-index:70;background:rgba(2,6,23,.65);opacity:0;pointer-events:none;transition:opacity .2s}#pov.on{opacity:1;pointer-events:auto}
+#pnav{position:fixed;top:0;bottom:0;left:0;width:min(80vw,18rem);z-index:71;transform:translateX(-105%);transition:transform .22s;display:flex;flex-direction:column;gap:.35rem;padding:calc(1rem + env(safe-area-inset-top,0px)) .75rem calc(1rem + env(safe-area-inset-bottom,0px));background:#0b1224;border-right:1px solid rgba(148,163,184,.22);overflow-y:auto}#pnav.on{transform:none}
+#pnav .mt{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:#64748b;padding:.2rem 1rem .6rem}
+#pnav button{display:flex;align-items:center;gap:.8rem;padding:.85rem 1rem;border-radius:.8rem;color:#cbd5e1;font-weight:600;text-align:left}
+#pnav button.on{background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff}#pnav button:hover{color:#fff}
+#pnav b{margin-left:auto;background:#10b981;color:#022c22;border-radius:999px;font-size:.75rem;padding:0 .5rem}
 .pane{display:none!important}.pane.on{display:block!important}.pane.on.g2{display:grid!important}.stack>*+*{margin-top:1rem}.g2{display:grid;gap:1rem}
 @media(min-width:1024px){.g2{grid-template-columns:1fr 1fr;align-items:start}}
-@media(max-width:767px){#pnav{position:fixed;left:.5rem;right:.5rem;bottom:calc(.5rem + env(safe-area-inset-bottom,0px));top:auto;margin:0;z-index:45}#pnav button{flex-direction:column;gap:.15rem;font-size:.65rem;padding:.5rem .2rem}body{padding-bottom:calc(9rem + env(safe-area-inset-bottom,0px))!important}html{scroll-padding-bottom:10rem}#toast{bottom:calc(7.5rem + env(safe-area-inset-bottom,0px))!important}#pnav{background:rgba(15,23,42,.98)}#pnav button{position:relative}#pnav b{position:absolute;top:.1rem;left:55%;margin:0}}
 .seg{display:inline-flex;padding:.25rem;border-radius:.8rem;background:rgba(15,23,42,.9);border:1px solid rgba(148,163,184,.18)}
 .seg button{padding:.45rem 1rem;border-radius:.6rem;font-size:.85rem;font-weight:600;color:#94a3b8}.seg button.on{background:#1e293b;color:#fff}
 .vgrid{display:grid;gap:.75rem;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
@@ -1410,10 +1415,16 @@ const tabs = [
   ['set', 'Ayarlar', ic('<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>')]
 ];
 const nav = document.createElement('nav'); nav.id = 'pnav'; nav.setAttribute('aria-label', 'Ana menü');
-nav.innerHTML = tabs.map(t => `<button data-t="${t[0]}"><span style="display:contents">${t[2]}</span><span>${t[1]}</span></button>`).join('');
-const show = t => { nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); for(const k in P) P[k].classList.toggle('on', k === t); try{ localStorage.setItem('pts_tab', t); }catch(e){} window.scrollTo(0, 0); };
+const ov = document.createElement('div'); ov.id = 'pov';
+const hb = document.createElement('button'); hb.id = 'hb'; hb.setAttribute('aria-label', 'Menüyü aç/kapat'); hb.setAttribute('aria-expanded', 'false'); hb.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+const menu = o => { nav.classList.toggle('on', o); ov.classList.toggle('on', o); hb.setAttribute('aria-expanded', o); };
+hb.onclick = () => menu(!nav.classList.contains('on')); ov.onclick = () => menu(false);
+document.addEventListener('keydown', e => { if(e.key === 'Escape') menu(false); });
+nav.innerHTML = '<div class="mt">Menü</div>' + tabs.map(t => `<button data-t="${t[0]}"><span style="display:contents">${t[2]}</span><span>${t[1]}</span></button>`).join('');
+const show = t => { nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); for(const k in P) P[k].classList.toggle('on', k === t); try{ localStorage.setItem('pts_tab', t); }catch(e){} menu(false); window.scrollTo(0, 0); };
 nav.onclick = e => { const b = e.target.closest('button'); if(b) show(b.dataset.t); };
-hdr.after(nav); nav.after(P.home, P.lot, P.drv, P.tar, P.set); oldGrid.remove();
+const bar = hdr.querySelector('.pts-bar'); root.insertBefore(bar, hdr); bar.querySelector('.pts-brand').prepend(hb);
+document.body.append(ov, nav); hdr.after(P.home, P.lot, P.drv, P.tar, P.set); oldGrid.remove();
 
 /* Otopark kartları */
 const renderCards = () => {
