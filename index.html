@@ -1042,6 +1042,25 @@ async function delSess(id){
   if(!await adminOk()) return;
   if(lastAct && lastAct.id === id) lastAct = null; park = park.filter(x => x.id !== id); save(); renderLog();
 }
+/* Kara listedeki araç için: polisi ara (155) + olay bilgisini kopyala */
+const POLICE_NO = '155';
+function policeText(plate, isIn){
+  const b = bl.find(x => x.plate === plate), org = (ld('plk_kvkk_v1', {}).org || '').trim();
+  return `${org ? org + ' - ' : ''}Aranan araç ${isIn ? 'otoparka girdi' : 'otoparktan çıktı'}.\nPlaka: ${fmt(plate)}\nSebep: ${b && b.note ? b.note : '-'}\nSaat: ${fmtDT(Date.now())}`;
+}
+function policeCopy(plate, isIn){
+  const t = policeText(plate, isIn);
+  const ok = () => toast('Olay bilgisi kopyalandı.');
+  try{ navigator.clipboard.writeText(t).then(ok, () => { prompt('Kopyalayın:', t); }); }
+  catch(e){ prompt('Kopyalayın:', t); }
+}
+function policeHtml(plate, isIn){
+  if(!bl.some(x => x.plate === plate)) return '';
+  return `<div class="flex flex-wrap gap-2 mt-4 pt-4" style="border-top:1px solid rgba(220,38,38,.35)">
+    <a href="tel:${POLICE_NO}" class="btn bg-red-600 hover:bg-red-500 text-white" onclick="try{audit('POLİS ARANDI','${plate}','')}catch(e){}"><i class="fa-solid fa-phone-volume"></i>Polisi ara (${POLICE_NO})</a>
+    <button class="btn bg-slate-800 hover:bg-slate-700" onclick="policeCopy('${plate}', ${isIn})"><i class="fa-regular fa-copy"></i>Olay bilgisini kopyala</button>
+  </div>`;
+}
 function showPunch(a, plate, d, idx, candidates, warns){
   const isIn = a.type === 'entry', s = a.s, st = subOf(d);
   const c = isIn ? ['16,185,129', '#10b981', 'Giriş kaydedildi'] : ['56,189,248', '#38bdf8', 'Çıkış kaydedildi'];
@@ -1066,6 +1085,7 @@ function showPunch(a, plate, d, idx, candidates, warns){
       <div><dt class="text-slate-400">Statü</dt><dd class="font-semibold">${stTxt}</dd></div>
       ${s.exit ? `<div><dt class="text-slate-400">Ödenecek ücret</dt><dd class="text-white font-bold text-lg">${s.fee ? money(s.fee) : 'Ücretsiz'}</dd></div>` : ''}
     </dl>
+    ${policeHtml(plate, isIn)}
     <div class="flex flex-wrap gap-2 mt-4">
       <button class="btn bg-slate-800 hover:bg-slate-700" onclick="undoClick()"><i class="fa-solid fa-rotate"></i>Geri al</button>
       ${s.exit ? `<button class="btn bg-slate-800 hover:bg-slate-700" onclick="printReceipt('${s.id}')"><i class="fa-solid fa-file-export"></i>Fiş yazdır</button>` : ''}
@@ -2392,6 +2412,17 @@ setTimeout(bgTick, 8000);
 window.addEventListener('online', () => { try{ flushQ(); }catch(e){} });
 })();
 
+</script>
+<script>
+/* İlk açılış: admin şifresi henüz yoksa şifre belirleme penceresini otomatik göster */
+window.addEventListener('load', () => {
+  setTimeout(async () => {
+    try{
+      try{ localStorage.setItem('pts_ls_test', '1'); localStorage.removeItem('pts_ls_test'); }catch(e){ return; }   // depolama yoksa şifre kaydedilemez, rahatsız etme
+      if(!getPw()) await adminOk();
+    }catch(e){}
+  }, 400);
+});
 </script>
 <script>
 /* PWA: yalnızca https veya localhost'ta çalışır; dosyadan (file://) açılınca sessizce atlanır */
