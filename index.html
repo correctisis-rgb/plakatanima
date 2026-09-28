@@ -804,7 +804,7 @@ function handleResult(plate, raw, candidates, hasPlateEvidence){
   const idx = drivers.findIndex(x => norm(x.plate) === plate);
   const d = idx >= 0 ? drivers[idx] : null;
   const warns = [], b = bl.find(x => x.plate === plate);
-  if(b){ warns.push(['#dc2626', 'KARA LİSTE: ' + esc(b.note || 'Yasaklı araç')]); beep(); }
+  if(b){ warns.push(['#dc2626', 'KARA LİSTE: ' + esc(b.note || 'Yasaklı araç')]); alarm(); }
   if(subOf(d) === 'expired') warns.push(['#d97706', 'Abonelik süresi dolmuş, ücretli tarife uygulanır.']);
   if(!park.some(x => x.plate === plate && !x.exit) && cfg.cap && park.filter(x => !x.exit).length >= cfg.cap){ warns.push(['#d97706', 'Otopark dolu! Kapasite aşılıyor.']); beep(); }
   showPunch(punch(plate), plate, d, idx, candidates, warns);
@@ -830,16 +830,51 @@ function calcFee(s, d){
   const days = Math.floor(m / 1440), rem = m % 1440, part = Math.ceil(rem / 60) * cfg.hour;
   return cfg.day > 0 ? days * cfg.day + Math.min(cfg.day, part) : Math.ceil(m / 60) * cfg.hour;
 }
-function beep(){ try{ const c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.type = 'square'; o.frequency.value = 880; g.gain.value = .15; o.connect(g); g.connect(c.destination); o.start(); setTimeout(() => o.frequency.value = 600, 250); setTimeout(() => { o.stop(); c.close(); }, 600); }catch(e){} }
+/* ---------- Ses: tek ortak AudioContext (tarayıcılar ilk dokunuşa kadar sesi kilitli tutar) ---------- */
+let AC = null;
+function audioCtx(){
+  try{ if(!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if(AC.state === 'suspended') AC.resume(); }catch(e){}
+  return AC;
+}
+['click', 'touchstart', 'keydown'].forEach(ev => document.addEventListener(ev, audioCtx, {passive: true}));
+function tones(seq, vol, type){
+  const c = audioCtx(); if(!c) return;
+  const g = c.createGain(); g.gain.value = vol; g.connect(c.destination);
+  let t = c.currentTime;
+  seq.forEach(([f, d]) => { const o = c.createOscillator(); o.type = type || 'square'; o.frequency.value = f; o.connect(g); o.start(t); o.stop(t + d); t += d; });
+}
+function beep(){ tones([[880, .25], [600, .25]], .15); }
+/* Kara liste alarmı: ~3 sn siren + titreşim + sesli anons */
+function alarm(){
+  const seq = []; for(let i = 0; i < 5; i++) seq.push([1000, .3], [650, .3]);
+  tones(seq, .45);
+  try{ navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]); }catch(e){}
+  try{
+    if('speechSynthesis' in window){
+      const u = new SpeechSynthesisUtterance('Dikkat! Kara listedeki araç.'); u.lang = 'tr-TR'; u.rate = 1; u.volume = 1;
+      setTimeout(() => { try{ speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){} }, 3100);
+    }
+  }catch(e){}
+}
 function filtered(){
   const q = norm($('pkSearch').value), f = $('pkFrom').value ? new Date($('pkFrom').value + 'T00:00:00').getTime() : 0, e = $('pkTo').value ? new Date($('pkTo').value + 'T23:59:59').getTime() : Infinity;
   return park.filter(s => (!q || s.plate.includes(q)) && s.entry >= f && s.entry <= e);
 }
+/* Yazdırma: gizli iframe kullanır, ayrı pencere/sekme açmaz; kullanıcı ekranda kalır. */
+function printHtml(html){
+  const f = document.createElement('iframe');
+  f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+  document.body.appendChild(f);
+  const w = f.contentWindow, d = w.document;
+  d.open(); d.write(html); d.close();
+  const clean = () => setTimeout(() => { try{ f.remove(); }catch(e){} }, 500);
+  w.onafterprint = clean;
+  setTimeout(() => { try{ w.focus(); w.print(); }catch(e){ toast('Yazdırma başlatılamadı.'); clean(); } }, 300);
+  setTimeout(() => { try{ f.remove(); }catch(e){} }, 120000);
+}
 function printReceipt(id){
   const s = park.find(x => x.id === id); if(!s) return;
-  const w = window.open('', '_blank', 'width=380,height=560'); if(!w) return toast('Açılır pencere engellendi.');
-  w.document.write(`<html><head><title>Fiş</title><style>body{font:14px monospace;width:300px;margin:8px}h3{text-align:center;margin:6px 0}hr{border:0;border-top:1px dashed #000}p{display:flex;justify-content:space-between;margin:4px 0}</style></head><body><h3>PTS OTOPARK</h3><hr><p><b>Plaka</b><span>${fmt(s.plate)}</span></p><p><b>Giriş</b><span>${fmtDT(s.entry)}</span></p><p><b>Çıkış</b><span>${s.exit ? fmtDT(s.exit) : '-'}</span></p><p><b>Süre</b><span>${s.exit ? fmtDur(s.exit - s.entry) : '-'}</span></p><hr><p><b>TUTAR</b><span>${money(s.fee || 0)}</span></p><hr><h3>İyi yolculuklar</h3><script>onload=()=>print()<\/script></body></html>`);
-  w.document.close();
+  printHtml(`<html><head><meta charset="utf-8"><title>Fiş</title><style>body{font:14px monospace;width:300px;margin:8px}h3{text-align:center;margin:6px 0}hr{border:0;border-top:1px dashed #000}p{display:flex;justify-content:space-between;margin:4px 0}</style></head><body><h3>PTS OTOPARK</h3><hr><p><b>Plaka</b><span>${esc(fmt(s.plate))}</span></p><p><b>Giriş</b><span>${fmtDT(s.entry)}</span></p><p><b>Çıkış</b><span>${s.exit ? fmtDT(s.exit) : '-'}</span></p><p><b>Süre</b><span>${s.exit ? fmtDur(s.exit - s.entry) : '-'}</span></p><hr><p><b>TUTAR</b><span>${money(s.fee || 0)}</span></p><hr><h3>İyi yolculuklar</h3></body></html>`);
 }
 function renderBl(){
   $('blCnt').textContent = `(${bl.length})`;
@@ -1360,6 +1395,22 @@ window.pv2Diff = p => { undoLast(); pv2Pick(p, 1); };
 window.pv2Pick = (p, f) => { force = !!f; man = true; try{ handleResult(p, ctx.raw, ctx.c, true); }finally{ man = false; force = false; } };
 for(const n of ['manualLookup', 'chooseCandidate']){ const o = window[n]; window[n] = function(){ man = true; try{ return o.apply(this, arguments); }finally{ man = false; } }; }
 
+/* ---- Kara liste: birebir eşleşme değilse bile benzer okumada alarm (OCR hatası toleransı) ---- */
+const _hr2 = handleResult; handleResult = function(plate, raw, c, ev){
+  const r = _hr2.apply(this, arguments);
+  try{
+    if(plate && bl.length && !bl.some(x => x.plate === plate)){
+      const alt = (c || []).slice(0, 3);
+      const x = bl.find(b => alt.includes(b.plate) || plateNear(plate, b.plate));
+      if(x){
+        alarm(); audit('KARA LİSTE BENZERLİĞİ', x.plate, 'okunan=' + plate);
+        $('result').insertAdjacentHTML('afterbegin', `<div class="rounded-lg px-3 py-2 mb-3 text-sm font-bold" style="background:#dc2626;color:#fff">KARA LİSTE UYARISI: okunan ${esc(fmt(plate))}, kara listedeki ${esc(fmt(x.plate))} plakasına benziyor${x.note ? ' (' + esc(x.note) + ')' : ''}. Plakayı kontrol edin.</div>`);
+      }
+    }
+  }catch(e){}
+  return r;
+};
+
 /* ---- Denetim kaydı: silme/düzeltme işlemleri ---- */
 const _ul = undoLast; undoLast = function(){ const la = lastAct, s = la && park.find(x => x.id === la.id); _ul(); if(s) audit('GERİ ALINDI', s.plate, la.type === 'entry' ? 'giriş iptal' : 'çıkış iptal'); };
 const _en = exitNow; exitNow = function(id){ const s = park.find(x => x.id === id), was = s && !s.exit; _en(id); if(was && s.exit) audit('ÇIKIŞ', s.plate, 'listeden manuel; ücret=' + (s.fee || 0)); };
@@ -1397,7 +1448,7 @@ $('kTxt').onclick = () => {
   const o = kv.org || '[Site yönetimi unvanı]', c = kv.contact || '[başvuru adresi]', s = d => d > 0 ? d + ' gün' : 'süresiz';
   const t = `<h2>Otopark Plaka Tanıma Sistemi Aydınlatma Metni</h2><p><b>Veri sorumlusu:</b> ${esc(o)}</p><p><b>İşlenen veriler:</b> araç plakası, giriş/çıkış tarih ve saati, giriş ve çıkışta alınan araç/plaka görüntüsü; abone araçlarda ayrıca ad-soyad, telefon ve araç modeli.</p><p><b>Amaç:</b> site otopark giriş-çıkış kontrolü, güvenliğin sağlanması, abonelik/ücret takibi ve olası uyuşmazlıkların çözümü.</p><p><b>Hukuki sebep:</b> 6698 sayılı Kanun m.5/2-f (veri sorumlusunun meşru menfaati); abonelerde ayrıca m.5/2-c (sözleşmenin ifası).</p><p><b>Saklama:</b> görüntüler ${s(kv.photoDays)}, geçiş kayıtları ${s(kv.recDays)} saklanır; süre sonunda silinir. Veriler sistemin kurulu olduğu cihazda tutulur.</p><p><b>Aktarım:</b> yalnızca mevzuat gereği yetkili kurum ve kuruluşlara, talep halinde.</p><p><b>Haklarınız:</b> Kanun m.11 kapsamındaki haklarınız için ${esc(c)} adresine başvurabilirsiniz.</p><hr><p><b>Giriş levhası metni:</b> “Bu alanda plaka tanıma sistemiyle araç giriş-çıkış kaydı ve görüntü alınmaktadır. Ayrıntılı aydınlatma metni site yönetiminden edinilebilir.”</p><p style="font-size:12px;color:#666">Bu metin taslaktır; yayınlamadan önce hukuki danışmanlık alınız.</p>`;
   const w = window.open('', '_blank'); if(!w) return toast('Açılır pencere engellendi.');
-  w.document.write(`<!doctype html><meta charset="utf-8"><title>Aydınlatma Metni</title><body style="font:15px/1.5 system-ui;max-width:680px;margin:24px auto;padding:0 16px">${t}<button onclick="print()">Yazdır</button></body>`); w.document.close();
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Aydınlatma Metni</title><body style="font:15px/1.5 system-ui;max-width:680px;margin:24px auto;padding:0 16px">${t}<button onclick="print()">Yazdır</button> <button onclick="window.close()">Kapat</button></body>`); w.document.close();
 };
 loadKeys().then(purge); setInterval(purge, 36e5); renderLog();
 })();
