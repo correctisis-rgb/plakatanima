@@ -1644,6 +1644,10 @@ const CK = 'plk_ipcams_v1', AK = 'plk_ipcam_auto_v1';
 const HLS_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js';
 let cams = []; try{ cams = JSON.parse(localStorage.getItem(CK)) || []; if(!Array.isArray(cams)) cams = []; }catch(e){ cams = []; }
 const saveCams = () => { try{ localStorage.setItem(CK, JSON.stringify(cams)); }catch(e){} };
+const PK = 'plk_ipcam_paused_v1';   // tek tek durdurulan kameralar
+let paused = []; try{ paused = JSON.parse(localStorage.getItem(PK)) || []; if(!Array.isArray(paused)) paused = []; }catch(e){ paused = []; }
+const savePaused = () => { try{ localStorage.setItem(PK, JSON.stringify(paused)); }catch(e){} };
+const setPaused = (id, v) => { paused = paused.filter(x => x !== id); if(v) paused.push(id); savePaused(); };
 const rt = {};                       // çalışan kameralar: id -> {src, V, seen, noBox, msg}
 let mon = null, idx = 0, wl = null;
 const cd = () => (+($('pCd') && $('pCd').value) || 60) * 1000;
@@ -1659,6 +1663,17 @@ const kindOf = u => {
 };
 const hasCreds = u => /^[a-z]+:\/\/[^\/?#]*@/i.test(u);
 const mkId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+/* İlk açılışta örnek 2 kamera (go2rtc köprüsü bu bilgisayarda/aynı adreste çalışıyorsa hazır gelir; silinirse geri gelmez) */
+try{
+  if(!cams.length && localStorage.getItem('plk_ipcams_seed') !== '1'){
+    const h = location.hostname || 'localhost';
+    cams = [
+      {id: mkId(), name: 'GÜV. KAYAR KAPI', url: `http://${h}:1984/api/frame.jpeg?src=kayar_kapi`, role: 'auto', type: 'jpeg'},
+      {id: mkId(), name: 'FUAYE ALANI 2', url: `http://${h}:1984/api/frame.jpeg?src=fuaye_2`, role: 'auto', type: 'jpeg'}
+    ];
+    saveCams(); localStorage.setItem('plk_ipcams_seed', '1');
+  }
+}catch(e){}
 
 /* ---------- Kaynak: her tür, tek bir "son kare" kanvasına yazar ---------- */
 function makeSource(cam){
@@ -1772,10 +1787,11 @@ function fire(c, R, shot, best, ks){
 /* ---------- Başlat / durdur ---------- */
 async function wake(){ try{ if(navigator.wakeLock && !wl) wl = await navigator.wakeLock.request('screen'); }catch(e){} }
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && mon){ wl = null; wake(); } });
-function startAll(){
+function startAll(all){
   if(!cams.length) return toast('Önce bir kamera ekleyin.');
   audioCtx();
-  cams.forEach(c => { if(!rt[c.id]) rt[c.id] = {src: makeSource(c), V: makeVoter(knownPlates), seen: {}, noBox: 0, msg: 'Bağlanıyor...'}; });
+  if(all === true){ paused = []; savePaused(); }
+  cams.forEach(c => { if(!rt[c.id] && !paused.includes(c.id)) rt[c.id] = {src: makeSource(c), V: makeVoter(knownPlates), seen: {}, noBox: 0, msg: 'Bağlanıyor...'}; });
   if(!mon) mon = setInterval(monTick, 350);
   getSession().catch(() => {}); wake(); ui();
 }
@@ -1829,6 +1845,7 @@ function rowHtml(c){
     </div>
     <div style="display:flex;flex-direction:column;gap:.3rem">
       <button class="chip" onclick="ipcamTest('${c.id}')">Dene</button>
+      <button class="chip" onclick="ipcamToggle('${c.id}')">${on ? 'Durdur' : 'Başlat'}</button>
       <button class="chip" onclick="ipcamDel('${c.id}')">Sil</button>
     </div></div>`;
 }
@@ -1865,7 +1882,22 @@ $('icAdd').onclick = async () => {
 window.ipcamDel = async id => {
   if(!await adminOk()) return;
   if(rt[id]){ rt[id].src.stop(); delete rt[id]; }
+  setPaused(id, false);
   cams = cams.filter(c => c.id !== id); saveCams(); ui();
+};
+window.ipcamToggle = id => {   // tek kamerayı durdur / başlat
+  const c = cams.find(x => x.id === id); if(!c) return;
+  if(rt[id]){
+    rt[id].src.stop(); delete rt[id]; setPaused(id, true);
+    toast(`${c.name}: durduruldu`);
+  }else{
+    setPaused(id, false);
+    audioCtx();
+    rt[id] = {src: makeSource(c), V: makeVoter(knownPlates), seen: {}, noBox: 0, msg: 'Bağlanıyor...'};
+    if(!mon){ mon = setInterval(monTick, 350); getSession().catch(() => {}); wake(); }
+    toast(`${c.name}: başlatıldı`);
+  }
+  ui();
 };
 window.ipcamTest = async id => {
   const c = cams.find(x => x.id === id); if(!c) return;
@@ -1876,7 +1908,7 @@ window.ipcamTest = async id => {
   toast(S.ok ? `${c.name}: bağlantı başarılı (${S.cv.width}×${S.cv.height})` : `${c.name}: ${S.err || 'yanıt yok'}`);
   S.stop();
 };
-$('icRun').onclick = () => mon ? stopAll() : startAll();
+$('icRun').onclick = () => mon ? stopAll() : startAll(true);
 
 /* go2rtc ayar üretici */
 const gen = () => {
