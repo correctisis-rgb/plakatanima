@@ -927,7 +927,23 @@ function tones(seq, vol, type){
 }
 function beep(){ tones([[880, .25], [600, .25]], .15); }
 /* Kara liste alarmı: ~3 sn siren + titreşim + sesli anons */
+function alarmFlash(){
+  try{
+    if(!document.getElementById('alarmFlashCss')){
+      const st = document.createElement('style'); st.id = 'alarmFlashCss';
+      st.textContent = '@keyframes alarmPulse{0%,100%{box-shadow:inset 0 0 0 6px rgba(220,38,38,.35),inset 0 0 40px 10px rgba(220,38,38,.15)}50%{box-shadow:inset 0 0 0 14px rgba(220,38,38,1),inset 0 0 120px 40px rgba(220,38,38,.55)}}'
+        + '#alarmFlash{position:fixed;inset:0;z-index:2147483000;pointer-events:none;animation:alarmPulse .8s ease-in-out 8;transition:opacity .5s}'
+        + '@media (prefers-reduced-motion:reduce){#alarmFlash{animation:none;box-shadow:inset 0 0 0 12px #dc2626}}';
+      document.head.appendChild(st);
+    }
+    const old = document.getElementById('alarmFlash'); if(old) old.remove();
+    const el = document.createElement('div'); el.id = 'alarmFlash'; document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; }, 6400);
+    setTimeout(() => { el.remove(); }, 6900);
+  }catch(e){}
+}
 function alarm(){
+  alarmFlash();
   const seq = []; for(let i = 0; i < 5; i++) seq.push([1000, .3], [650, .3]);
   tones(seq, .45);
   try{ navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]); }catch(e){}
