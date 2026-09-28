@@ -1409,7 +1409,7 @@ document.querySelectorAll('section h2 + span, section > div > span.flex').forEac
 const ic = p => `<svg viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
 const tabs = [
   ['home', 'Ana ekran', ic('<path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>')],
-  ['lot', 'Otopark', ic('<path d="M4 16v-4l2-5h12l2 5v4z"/><path d="M6 16v3M18 16v3"/>') + '<b id="nIn">0</b>'],
+  ['lot', 'Otopark', ic('<path d="M4 16v-4l2-5h12l2 5v4z"/><path d="M6 16v3M18 16v3"/>'), '<b id="nIn">0</b>'],
   ['drv', 'Sürücüler', ic('<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14a5 5 0 0 1 4 5"/>')],
   ['tar', 'Tarife', ic('<path d="M20 12l-8 8-9-9V4h7z"/><circle cx="7.5" cy="8.5" r="1"/>')],
   ['set', 'Ayarlar', ic('<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>')]
@@ -1420,7 +1420,7 @@ const hb = document.createElement('button'); hb.id = 'hb'; hb.setAttribute('aria
 const menu = o => { nav.classList.toggle('on', o); ov.classList.toggle('on', o); hb.setAttribute('aria-expanded', o); };
 hb.onclick = () => menu(!nav.classList.contains('on')); ov.onclick = () => menu(false);
 document.addEventListener('keydown', e => { if(e.key === 'Escape') menu(false); });
-nav.innerHTML = '<div class="mt">Menü</div>' + tabs.map(t => `<button data-t="${t[0]}"><span style="display:contents">${t[2]}</span><span>${t[1]}</span></button>`).join('');
+nav.innerHTML = '<div class="mt">Menü</div>' + tabs.map(t => `<button data-t="${t[0]}"><span style="display:contents">${t[2]}</span><span>${t[1]}</span>${t[3] || ''}</button>`).join('');
 const show = t => { nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); for(const k in P) P[k].classList.toggle('on', k === t); try{ localStorage.setItem('pts_tab', t); }catch(e){} menu(false); window.scrollTo(0, 0); };
 nav.onclick = e => { const b = e.target.closest('button'); if(b) show(b.dataset.t); };
 const bar = hdr.querySelector('.pts-bar'); root.insertBefore(bar, hdr); bar.querySelector('.pts-brand').prepend(hb);
