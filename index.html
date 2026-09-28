@@ -1439,5 +1439,72 @@ show(t0); setSub(false); renderLog();
 })();
 
 </script>
+<script>
+/* ===== PTS v2: sürekli kamera + tekrar okuma koruması ===== */
+(() => {
+const st = document.createElement('style');
+st.textContent = '#camWrap,#video{max-height:38vh!important}';
+document.head.appendChild(st);
+
+/* Bekleme süresi seçimi */
+const row = $('pMode').parentElement; row.classList.add('flex-wrap');
+row.insertAdjacentHTML('beforeend', '<span class="text-slate-400 ml-2">Aynı plaka bekleme:</span><select id="pCd" class="inp"><option value="30">30 sn</option><option value="60">1 dk</option><option value="120">2 dk</option><option value="300">5 dk</option></select>');
+try{ $('pCd').value = localStorage.getItem('pts_cd') || '60'; }catch(e){}
+if(!$('pCd').value) $('pCd').value = '60';
+$('pCd').onchange = () => { try{ localStorage.setItem('pts_cd', $('pCd').value); }catch(e){} hint(); };
+const getCd = () => (+$('pCd').value || 60) * 1000;
+const hint = () => { const p = document.querySelector('#modal p.text-xs'); if(p) p.textContent = `Kamera açık kalır, her araç otomatik kaydedilir. Aynı plaka en az ${$('pCd').selectedOptions[0].text} geçmeden ve araç kadrajdan çıkmadan tekrar okunmaz.`; };
+hint();
+
+/* Sonuç kartı kamera penceresinin içinde görünsün */
+let wl = null;
+const enter = async () => { $('modal').firstElementChild.append($('result')); $('result').style.marginTop = '.75rem'; try{ wl = await navigator.wakeLock.request('screen'); }catch(e){} };
+const leave = () => { $('pane-home').append($('result')); $('result').style.marginTop = ''; try{ wl && wl.release(); }catch(e){} wl = null; };
+const _bc = $('btnCam').onclick; $('btnCam').onclick = async () => { await _bc(); if(!$('modal').classList.contains('hidden')) enter(); };
+const _cc = closeCam; closeCam = function(){ _cc(); leave(); };
+$('btnClose').onclick = () => closeCam();
+$('modal').onclick = e => { if(e.target === $('modal')) closeCam(); };
+
+/* Sürekli tarama */
+let lastRead = {p: '', t: 0}, seenEmpty = true; const recent = {};
+liveTick = async function(){
+  if(!liveActive) return;
+  const v = $('video'); if(!v || !v.videoWidth) return;
+  const det = grabDetectFrame(v, 640), d = detectPlates(det.canvas), cands = [];
+  d.blue.forEach(b => cands.push({box: b.withStrip, reads: [b.withStrip, b.noStrip], kind: 'anchor'}));
+  d.others.slice(0, 2).forEach(b => cands.push({box: b, reads: [b, padBox(b, .12, .25, det.canvas.width, det.canvas.height)], kind: 'crop'}));
+  drawOverlay(cands[0] && cands[0].box, det);
+  if(!cands.length){ liveNoBoxTicks++; if(liveNoBoxTicks > 6) liveReset(); if(liveNoBoxTicks >= 4) seenEmpty = true; setLiveStatus('Araç ve plaka aranıyor...'); return; }
+  liveNoBoxTicks = 0;
+  if(busy) return;
+  busy = true;
+  try{
+    if(!session){ setLiveStatus('OCR motoru hazırlanıyor...'); await getSession(); }
+    if(!liveActive) return;
+    setLiveStatus('Plaka kare içinde, okunuyor...');
+    const shot = captureColorFrame(v), up = shot.width / det.canvas.width, sc = b => ({x: b.x * up, y: b.y * up, w: b.w * up, h: b.h * up}), list = [];
+    cands.slice(0, 2).forEach(c => c.reads.forEach(b => list.push({b: sc(b), kind: c.kind})));
+    const R = await readBoxes(shot, list.map(x => x.b));
+    if(!liveActive) return;
+    R.forEach((P, i) => liveV.add(P, list[i].kind === 'anchor' ? 'live' : 'crop'));
+    const ks = liveV.ranked(), best = ks[0];
+    if(liveV.enough() || (best && liveV.found[best] >= 110)){
+      const now = Date.now(), wait = (recent[best] || 0) + getCd() - now;
+      if(wait > 0 || (lastRead.p === best && !seenEmpty)){
+        setLiveStatus(`${fmt(best)} az önce okundu, tekrar okunmayacak` + (wait > 0 ? ` (${Math.ceil(wait / 1000)} sn)` : ' (araç kadrajdan çıkmalı)'));
+        liveReset(); return;
+      }
+      recent[best] = now; lastRead = {p: best, t: now}; seenEmpty = false;
+      showPreview(shot); lastRaw = liveV.raw; lastCandidates = ks; lastHasEvidence = true;
+      handleResult(best, liveV.raw, ks, true);
+      setLiveStatus(`✓ ${fmt(best)} okundu, sonraki araç bekleniyor`);
+      liveReset();
+    }else if(best){ setLiveStatus(`Aday okunuyor: ${fmt(best)} — netleşmesi bekleniyor...`); }
+  }catch(e){ console.error(e); }
+  finally{ busy = false; }
+};
+})();
+
+</script>
 </body>
 </html>
