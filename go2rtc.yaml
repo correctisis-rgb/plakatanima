@@ -1,0 +1,10 @@
+# go2rtc ayar dosyası (köprü bilgisayarında go2rtc ile aynı klasöre koyun)
+# SIFRE yerine kameraların şifresini yazın. Şifrede @ : / # ? gibi karakter varsa
+# URL kodlaması gerekir (örn. @ yerine %40).
+streams:
+  # Sony SNC-EM632RC - GÜV. KAYAR KAPI (RTSP 554, ana akış)
+  kayar_kapi: "rtsp://admin:20Onko15@10.41.2.76:554/media/video1"
+
+api:
+  listen: ":1984"
+  origin: "*"
