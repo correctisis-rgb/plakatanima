@@ -114,6 +114,116 @@ tbody tr:hover{background:rgba(56,189,248,.06)}
 #stAll,#stIn{font-size:1.6rem}
 label.fld{display:block;font-size:.72rem;color:#94a3b8}label.fld .inp{margin-top:.25rem}
 </style>
+<script>
+/* ============================================================
+   Dosya tabanlı veri senkronizasyonu (File System Access API)
+   Amaç: uygulamanın tüm localStorage okuma/yazmaları AYNEN kalsın,
+   ama arka planda her değişiklik aynı klasördeki bir .json dosyasına
+   da yazılsın; dosya seçildiğinde de içeriği localStorage'a yüklensin.
+   Yalnızca Chrome/Edge destekler; desteklenmeyen tarayıcılarda
+   (örn. Firefox) uygulama eskisi gibi sadece tarayıcı hafızasıyla çalışır.
+   ============================================================ */
+(function(){
+  var SUPPORTED = !!(window.showOpenFilePicker && window.showSaveFilePicker && window.indexedDB);
+  var DB = 'pts_fs_db_v1', STORE = 'handles', HKEY = 'dataFile';
+  var fileHandle = null, ready = false, writeTimer = null, writing = false;
+
+  function idb(){
+    return new Promise(function(res, rej){
+      var r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore(STORE); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+  }
+  function idbGet(k){ return idb().then(function(db){ return new Promise(function(res, rej){ var tx = db.transaction(STORE, 'readonly'), rq = tx.objectStore(STORE).get(k); rq.onsuccess = function(){ res(rq.result); }; rq.onerror = function(){ rej(rq.error); }; }); }); }
+  function idbSet(k, v){ return idb().then(function(db){ return new Promise(function(res, rej){ var tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(v, k); tx.oncomplete = function(){ res(); }; tx.onerror = function(){ rej(tx.error); }; }); }); }
+
+  function snapshot(){
+    var o = {};
+    for(var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); o[k] = localStorage.getItem(k); }
+    return o;
+  }
+
+  function setStatus(t, cls){
+    var el = document.getElementById('fsStatus'); if(el){ el.textContent = t; }
+  }
+
+  function writeFile(){
+    if(!fileHandle || writing) return;
+    writing = true;
+    fileHandle.queryPermission({mode: 'readwrite'}).then(function(perm){
+      if(perm !== 'granted'){ writing = false; return; }
+      return fileHandle.createWritable().then(function(w){
+        return w.write(JSON.stringify(snapshot(), null, 2)).then(function(){ return w.close(); });
+      }).then(function(){ setStatus('Bağlı: ' + (fileHandle.name || 'veri dosyası') + ' · son kayıt ' + new Date().toLocaleTimeString('tr-TR')); });
+    }).catch(function(){ /* sessiz geç */ }).finally(function(){ writing = false; });
+  }
+  function scheduleWrite(){ if(!ready) return; clearTimeout(writeTimer); writeTimer = setTimeout(writeFile, 500); }
+
+  // localStorage'a yapılan HER yazma/silme işlemini yakala (uygulamanın geri kalanı hiç değişmeden çalışmaya devam eder)
+  var _set = Storage.prototype.setItem, _rem = Storage.prototype.removeItem, _clr = Storage.prototype.clear;
+  Storage.prototype.setItem = function(k, v){ _set.call(this, k, v); if(this === localStorage) scheduleWrite(); };
+  Storage.prototype.removeItem = function(k){ _rem.call(this, k); if(this === localStorage) scheduleWrite(); };
+  Storage.prototype.clear = function(){ _clr.call(this); if(this === localStorage) scheduleWrite(); };
+
+  function loadFromHandle(handle, reloadAfter){
+    return handle.getFile().then(function(file){ return file.text(); }).then(function(text){
+      var obj = {}; try{ obj = JSON.parse(text || '{}') || {}; }catch(e){ obj = {}; }
+      ready = false;
+      localStorage.clear();
+      for(var k in obj){ if(Object.prototype.hasOwnProperty.call(obj, k)) localStorage.setItem(k, obj[k]); }
+      fileHandle = handle; ready = true;
+      setStatus('Bağlı: ' + (handle.name || 'veri dosyası'));
+      document.getElementById('fsReconnect').style.display = 'none';
+      if(reloadAfter) location.reload();
+    });
+  }
+
+  function connectExisting(){
+    window.showOpenFilePicker({types: [{description: 'PTS Veri Dosyası', accept: {'application/json': ['.json']}}], excludeAcceptAllOption: false})
+      .then(function(handles){ var h = handles[0]; return idbSet(HKEY, h).then(function(){ return loadFromHandle(h, true); }); })
+      .catch(function(){});
+  }
+  function connectNew(){
+    window.showSaveFilePicker({suggestedName: 'pts_data.json', types: [{description: 'PTS Veri Dosyası', accept: {'application/json': ['.json']}}]})
+      .then(function(h){ return idbSet(HKEY, h).then(function(){ fileHandle = h; ready = true; setStatus('Bağlı: ' + (h.name || 'veri dosyası')); document.getElementById('fsReconnect').style.display = 'none'; return writeFile(); }); })
+      .catch(function(){});
+  }
+  function reconnect(handle){
+    handle.requestPermission({mode: 'readwrite'}).then(function(perm){
+      if(perm === 'granted'){ return loadFromHandle(handle, true); }
+      setStatus('İzin verilmedi. "Yeniden bağlan" butonuna tekrar tıklayın.');
+    }).catch(function(){});
+  }
+
+  function initUI(){
+    if(!SUPPORTED){
+      setStatus('Bu tarayıcı dosya tabanlı senkronizasyonu desteklemiyor (Chrome/Edge kullanın). Veriler yalnızca bu tarayıcıda tutuluyor.');
+      var b1 = document.getElementById('fsConnectExisting'), b2 = document.getElementById('fsConnectNew');
+      if(b1) b1.style.display = 'none'; if(b2) b2.style.display = 'none';
+      return;
+    }
+    document.getElementById('fsConnectExisting').onclick = connectExisting;
+    document.getElementById('fsConnectNew').onclick = connectNew;
+    idbGet(HKEY).then(function(handle){
+      if(!handle) return;
+      handle.queryPermission({mode: 'readwrite'}).then(function(perm){
+        if(perm === 'granted'){ loadFromHandle(handle, false); }
+        else {
+          setStatus('Veri dosyası daha önce bağlanmış: "' + (handle.name || 'dosya') + '". Devam etmek için yeniden bağlanın.');
+          var rb = document.getElementById('fsReconnect');
+          rb.style.display = 'inline-flex';
+          rb.onclick = function(){ reconnect(handle); };
+        }
+      }).catch(function(){});
+    }).catch(function(){});
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initUI);
+  else initUI();
+})();
+</script>
 <script>(function(){try{var m=localStorage.getItem('pts_theme')||'auto',l=m==='light'||(m==='auto'&&window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches);document.documentElement.setAttribute('data-theme',l?'light':'dark');var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute('content',l?'#f1f5f9':'#020617');}catch(e){}})();</script>
 <style id="ptsTheme">
 /* ===== PTS gündüz teması ===== */
@@ -196,6 +306,13 @@ details code{background:#1e293b;color:#e2e8f0;padding:.05rem .35rem;border-radiu
       <div class="pts-brand"><div class="pts-logo"><i class="fa-solid fa-car-side"></i></div>
         <div><h1>PTS <span>Plaka Takip Sistemi</span></h1><p>Otopark giriş / çıkış yönetimi · Veriler cihazınızda kalır</p></div></div>
       <div class="pts-clock"><b id="clockT">--:--:--</b><span id="clockD"></span></div>
+    </div>
+    <div id="fsBar" style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;font-size:.8rem;color:#94a3b8;margin:.35rem 0 .1rem">
+      <i class="fa-solid fa-folder-open"></i>
+      <span id="fsStatus">Veri dosyası bağlı değil (veriler yalnızca bu tarayıcıda tutuluyor)</span>
+      <button id="fsConnectExisting" class="btn bg-slate-800 hover:bg-slate-700" style="padding:.3rem .6rem;font-size:.75rem;min-height:auto">Var olan veri dosyasını seç</button>
+      <button id="fsConnectNew" class="btn bg-slate-800 hover:bg-slate-700" style="padding:.3rem .6rem;font-size:.75rem;min-height:auto">Yeni veri dosyası oluştur</button>
+      <button id="fsReconnect" class="btn bg-amber-700 hover:bg-amber-600" style="padding:.3rem .6rem;font-size:.75rem;min-height:auto;display:none">Veri dosyasına yeniden bağlan</button>
     </div>
     <div class="pts-stats">
       <div class="pts-stat s1"><span>Şu an otoparkta</span><b id="stIn">0</b><div class="occ"><i id="stBar"></i></div></div>
@@ -285,6 +402,7 @@ details code{background:#1e293b;color:#e2e8f0;padding:.05rem .35rem;border-radiu
           <label class="fld">Ücretsiz süre (dk)<input id="cFree" type="number" min="0" class="inp"></label>
           <label class="fld">Saatlik ücret (₺, başlanan saat)<input id="cHour" type="number" min="0" step="0.5" class="inp"></label>
           <label class="fld">Günlük tavan (₺, 0 = yok)<input id="cDay" type="number" min="0" step="0.5" class="inp"></label>
+          <label class="fld">Firma adı (fişte görünür)<input id="cCompany" type="text" maxlength="60" class="inp" placeholder="Örn. ABC Fabrika"></label>
         </div>
         <button id="btnCfg" class="btn bg-emerald-600 hover:bg-emerald-500 text-white mt-3"><i class="fa-solid fa-floppy-disk"></i>Tarifeyi kaydet</button>
       </section>
@@ -345,7 +463,7 @@ const DEFAULTS = [{plate:'34BYL575', name:'Emre Alakuş', phone:'0532 123 45 67'
 
 function load(k, d){ try{ const v = JSON.parse(localStorage.getItem(k)); return Array.isArray(v) ? v : d; }catch(e){ return d; } }
 let drivers = load(KEY, DEFAULTS), logs = load(LKEY, []), park = load(PKEY, []);
-const CFG0 = {cap:50, free:15, hour:30, day:200};
+const CFG0 = {cap:50, free:15, hour:30, day:200, company:''};
 let cfg = (() => { try{ return Object.assign({}, CFG0, JSON.parse(localStorage.getItem('plk_cfg_v1')) || {}); }catch(e){ return Object.assign({}, CFG0); } })();
 let bl = load('plk_bl_v1', []);
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(drivers)); localStorage.setItem(LKEY, JSON.stringify(logs)); localStorage.setItem(PKEY, JSON.stringify(park)); localStorage.setItem('plk_cfg_v1', JSON.stringify(cfg)); localStorage.setItem('plk_bl_v1', JSON.stringify(bl)); }catch(e){} }
@@ -972,7 +1090,7 @@ function printHtml(html){
 }
 function printReceipt(id){
   const s = park.find(x => x.id === id); if(!s) return;
-  printHtml(`<html><head><meta charset="utf-8"><title>Fiş</title><style>body{font:14px monospace;width:300px;margin:8px}h3{text-align:center;margin:6px 0}hr{border:0;border-top:1px dashed #000}p{display:flex;justify-content:space-between;margin:4px 0}</style></head><body><h3>PTS OTOPARK</h3><hr><p><b>Plaka</b><span>${esc(fmt(s.plate))}</span></p><p><b>Giriş</b><span>${fmtDT(s.entry)}</span></p><p><b>Çıkış</b><span>${s.exit ? fmtDT(s.exit) : '-'}</span></p><p><b>Süre</b><span>${s.exit ? fmtDur(s.exit - s.entry) : '-'}</span></p><hr><p><b>TUTAR</b><span>${money(s.fee || 0)}</span></p><hr><h3>İyi yolculuklar</h3></body></html>`);
+  printHtml(`<html><head><meta charset="utf-8"><title>Fiş</title><style>body{font:14px monospace;width:300px;margin:8px}h3{text-align:center;margin:6px 0}hr{border:0;border-top:1px dashed #000}p{display:flex;justify-content:space-between;margin:4px 0}</style></head><body><h3>${esc(cfg.company || 'PTS OTOPARK')}</h3><hr><p><b>Plaka</b><span>${esc(fmt(s.plate))}</span></p><p><b>Giriş</b><span>${fmtDT(s.entry)}</span></p><p><b>Çıkış</b><span>${s.exit ? fmtDT(s.exit) : '-'}</span></p><p><b>Süre</b><span>${s.exit ? fmtDur(s.exit - s.entry) : '-'}</span></p><hr><p><b>TUTAR</b><span>${money(s.fee || 0)}</span></p><hr><h3>İyi yolculuklar</h3></body></html>`);
 }
 function renderBl(){
   $('blCnt').textContent = `(${bl.length})`;
@@ -1400,9 +1518,9 @@ $('btnBl').onclick = async () => {
 };
 $('btnCfg').onclick = async () => {
   if(!await adminOk()) return; const n = id => Math.max(0, parseFloat($(id).value) || 0);
-  cfg = {cap: Math.round(n('cCap')), free: Math.round(n('cFree')), hour: n('cHour'), day: n('cDay')}; save(); renderLog(); toast('Tarife kaydedildi.');
+  cfg = {cap: Math.round(n('cCap')), free: Math.round(n('cFree')), hour: n('cHour'), day: n('cDay'), company: $('cCompany').value.trim().slice(0, 60)}; save(); renderLog(); toast('Tarife kaydedildi.');
 };
-$('cCap').value = cfg.cap; $('cFree').value = cfg.free; $('cHour').value = cfg.hour; $('cDay').value = cfg.day;
+$('cCap').value = cfg.cap; $('cFree').value = cfg.free; $('cHour').value = cfg.hour; $('cDay').value = cfg.day; $('cCompany').value = cfg.company || '';
 renderBl(); $('result').insertAdjacentHTML('beforeend', manualFixHtml(null));
 function tick(){ const n = new Date(); $('clockT').textContent = n.toLocaleTimeString('tr-TR'); $('clockD').textContent = n.toLocaleDateString('tr-TR', {weekday:'long', day:'numeric', month:'long', year:'numeric'}); }
 tick(); setInterval(tick, 1000);
@@ -1701,12 +1819,12 @@ document.head.appendChild(st);
 
 /* Bekleme süresi seçimi */
 const row = $('pMode').parentElement; row.classList.add('flex-wrap');
-row.insertAdjacentHTML('beforeend', '<span class="text-slate-400 ml-2">Aynı plaka bekleme:</span><select id="pCd" class="inp"><option value="30">30 sn</option><option value="60">1 dk</option><option value="120">2 dk</option><option value="300">5 dk</option></select>');
+row.insertAdjacentHTML('beforeend', '<span class="text-slate-400 ml-2">Aynı plaka bekleme:</span><select id="pCd" class="inp"><option value="20">Kadrajdan çıkınca</option><option value="30">30 sn</option><option value="60">1 dk</option><option value="120">2 dk</option><option value="300">5 dk</option></select>');
 try{ $('pCd').value = localStorage.getItem('pts_cd') || '60'; }catch(e){}
 if(!$('pCd').value) $('pCd').value = '60';
 $('pCd').onchange = () => { try{ localStorage.setItem('pts_cd', $('pCd').value); }catch(e){} hint(); };
 const getCd = () => (+$('pCd').value || 60) * 1000;
-const hint = () => { const p = document.querySelector('#modal p.text-xs'); if(p) p.textContent = `Kamera açık kalır, her araç otomatik kaydedilir. Aynı plaka, kadrajda göründüğü sürece ve en son görülmesinden itibaren ${$('pCd').selectedOptions[0].text} geçmeden tekrar kaydedilmez.`; };
+const hint = () => { const p = document.querySelector('#modal p.text-xs'); if(p) p.textContent = `Kamera açık kalır, her araç otomatik kaydedilir. ${$('pCd').value === '20' ? 'Aynı plaka kadrajda kaldığı sürece tekrar okunmaz; kadrajdan çıkıp yaklaşık 20 sn görünmeyince yeniden okunur.' : 'Aynı plaka, kadrajda göründüğü sürece ve en son görülmesinden itibaren ' + $('pCd').selectedOptions[0].text + ' geçmeden tekrar kaydedilmez.'}`; };
 hint();
 
 /* Sonuç kartı kamera penceresinin içinde görünsün */
@@ -1719,6 +1837,7 @@ $('btnClose').onclick = () => closeCam();
 $('modal').onclick = e => { if(e.target === $('modal')) closeCam(); };
 
 /* Sürekli tarama */
+const sameP = (a, b) => { if(a === b) return true; if(Math.abs(a.length - b.length) > 1) return false; let i = 0; while(i < a.length && a[i] === b[i]) i++; return a.length === b.length ? a.slice(i + 1) === b.slice(i + 1) : a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1); };  /* 1 karakter farkı = aynı plaka (OCR titremesi) */
 const seen = {};  /* plaka -> en son görüldüğü an; süre son GÖRÜLMEDEN itibaren sayılır */
 liveTick = async function(){
   if(!liveActive) return;
@@ -1742,13 +1861,13 @@ liveTick = async function(){
     R.forEach((P, i) => liveV.add(P, list[i].kind === 'anchor' ? 'live' : 'crop'));
     const ks = liveV.ranked(), best = ks[0];
     if(liveV.enough() || (best && liveV.found[best] >= 110)){
-      const now = Date.now(), gap = now - (seen[best] || 0); seen[best] = now;
+      const now = Date.now(), sk = Object.keys(seen).find(k => sameP(k, best)) || best, gap = now - (seen[sk] || 0); if(sk !== best) delete seen[sk]; seen[best] = now;
       if(gap < getCd()){ setLiveStatus(`${fmt(best)} kadrajda / az önce görüldü, tekrar kaydedilmeyecek`); liveReset(); return; }
       showPreview(shot); lastRaw = liveV.raw; lastCandidates = ks; lastHasEvidence = true;
       handleResult(best, liveV.raw, ks, true);
       setLiveStatus(`✓ ${fmt(best)} okundu, sonraki araç bekleniyor`);
       liveReset();
-    }else if(best){ if(seen[best]) seen[best] = Date.now(); setLiveStatus(`Aday okunuyor: ${fmt(best)} — netleşmesi bekleniyor...`); }
+    }else if(best){ { const k = Object.keys(seen).find(k => sameP(k, best)); if(k) seen[k] = Date.now(); } setLiveStatus(`Aday okunuyor: ${fmt(best)} — netleşmesi bekleniyor...`); }
   }catch(e){ console.error(e); }
   finally{ busy = false; }
 };
@@ -1769,6 +1888,7 @@ const setPaused = (id, v) => { paused = paused.filter(x => x !== id); if(v) paus
 const rt = {};                       // çalışan kameralar: id -> {src, V, seen, noBox, msg}
 let mon = null, idx = 0, wl = null;
 const cd = () => (+($('pCd') && $('pCd').value) || 60) * 1000;
+const sameP = (a, b) => { if(a === b) return true; if(Math.abs(a.length - b.length) > 1) return false; let i = 0; while(i < a.length && a[i] === b[i]) i++; return a.length === b.length ? a.slice(i + 1) === b.slice(i + 1) : a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1); };  /* 1 karakter farkı = aynı plaka (OCR titremesi) */
 const ROLES = {auto: 'Giriş + Çıkış (otomatik)', in: 'Giriş kapısı', out: 'Çıkış kapısı'};
 const TYPES = {auto: 'Otomatik algıla', jpeg: 'JPEG anlık görüntü', mjpeg: 'MJPEG akış', hls: 'HLS (.m3u8)'};
 
@@ -1865,17 +1985,18 @@ async function monTick(){
   const ids = Object.keys(rt); if(!ids.length) return;
   const id = ids[idx++ % ids.length], R = rt[id], c = cams.find(x => x.id === id); if(!R || !c) return;
   const S = R.src, now = Date.now();
-  if(!S.ok || now - S.t > 8000){ R.msg = S.err || 'Bağlanıyor...'; return; }
-  if(now - S.tChange > 25000){ R.msg = 'Görüntü donmuş, yeniden bağlanılıyor...'; S.tChange = now; S.restart(); return; }
+  if(!S.ok || now - S.t > 8000){ R.msg = S.err || 'Bağlanıyor...'; R.phase = 'conn'; return; }
+  if(now - S.tChange > 25000){ R.msg = 'Görüntü donmuş, yeniden bağlanılıyor...'; R.phase = 'conn'; S.tChange = now; S.restart(); return; }
   const cv = S.cv, d = detectPlates(cv, 960), cands = [];
   d.blue.forEach(b => cands.push({reads: [b.withStrip, b.noStrip], kind: 'live'}));
   d.others.slice(0, 2).forEach(b => cands.push({reads: [b, padBox(b, .12, .25, cv.width, cv.height)], kind: 'crop'}));
-  if(!cands.length){ R.noBox++; if(R.noBox > 6) R.V = makeVoter(knownPlates); R.msg = 'Araç / plaka aranıyor...'; return; }
+  R.det = {t: now, W: cv.width, H: cv.height, boxes: d.blue.map(b => b.withStrip).concat(d.others.slice(0, 2)).map(b => ({x: b.x, y: b.y, w: b.w, h: b.h}))};   // Ana ekran canlı görüntüsü için
+  if(!cands.length){ R.noBox++; if(R.noBox > 6) R.V = makeVoter(knownPlates); R.msg = 'Araç / plaka aranıyor...'; R.phase = 'search'; R.cand = null; return; }
   R.noBox = 0;
   if(busy) return;
   busy = true;
   try{
-    if(!session){ R.msg = 'OCR motoru hazırlanıyor...'; await getSession(); }
+    if(!session){ R.msg = 'OCR motoru hazırlanıyor...'; R.phase = 'conn'; await getSession(); }
     if(!rt[id]) return;
     const shot = S.frame(); if(!shot) return;
     const list = []; cands.slice(0, 2).forEach(x => x.reads.forEach(b => list.push({b, kind: x.kind})));
@@ -1884,10 +2005,11 @@ async function monTick(){
     res.forEach((P, i) => R.V.add(P, list[i].kind));
     const ks = R.V.ranked(), best = ks[0];
     if(R.V.enough() || (best && R.V.found[best] >= 110)){
-      const t = Date.now(), gap = t - (R.seen[best] || 0); R.seen[best] = t;
-      if(gap < cd()){ R.msg = `${fmt(best)} kadrajda / az önce görüldü`; R.V = makeVoter(knownPlates); return; }
+      const t = Date.now(), sk = Object.keys(R.seen).find(k => sameP(k, best)) || best, gap = t - (R.seen[sk] || 0); if(sk !== best) delete R.seen[sk]; R.seen[best] = t;
+      if(gap < cd()){ R.msg = `${fmt(best)} kadrajda / az önce görüldü`; R.phase = 'seen'; R.cand = {plate: best}; R.V = makeVoter(knownPlates); return; }
       fire(c, R, shot, best, ks); R.V = makeVoter(knownPlates);
-    }else if(best){ if(R.seen[best]) R.seen[best] = Date.now(); R.msg = `Aday okunuyor: ${fmt(best)}...`; }
+    }else if(best){ { const k = Object.keys(R.seen).find(k => sameP(k, best)); if(k) R.seen[k] = Date.now(); } R.msg = `Aday okunuyor: ${fmt(best)}...`; R.phase = 'read'; R.cand = {plate: best, score: R.V.found[best]}; }
+    else{ R.msg = 'Plaka bölgesi bulundu, okunuyor...'; R.phase = 'read'; R.cand = null; }
   }catch(e){ console.error(e); R.msg = 'Okuma hatası'; }
   finally{ busy = false; }
 }
@@ -1899,7 +2021,7 @@ function fire(c, R, shot, best, ks){
     $('result').insertAdjacentHTML('afterbegin', `<div style="display:inline-block;background:#1e293b;border:1px solid #334155;color:#e2e8f0;font-size:.75rem;padding:.2rem .6rem;border-radius:999px;margin-bottom:.5rem"><i class="fa-solid fa-video" style="margin-right:.4rem;color:#38bdf8"></i>${esc(c.name)} · ${esc(ROLES[c.role] || '')}</div>`);
     toast(`${c.name}: ${fmt(best)}`);
   }finally{ pm.value = prev; }
-  R.msg = `✓ ${fmt(best)} okundu`;
+  R.msg = `✓ ${fmt(best)} okundu`; R.phase = 'done'; R.cand = null; R.hit = {plate: best, t: Date.now()};
 }
 
 /* ---------- Başlat / durdur ---------- */
@@ -1972,7 +2094,8 @@ function ui(){
   const on = !!mon;
   $('icRun').innerHTML = on ? '<i class="fa-solid fa-stop"></i>İzlemeyi durdur' : '<i class="fa-solid fa-play"></i>İzlemeyi başlat';
   $('icRun').className = 'btn text-white ' + (on ? 'bg-red-600 hover:bg-red-500' : 'bg-sky-600 hover:bg-sky-500');
-  $('icHint').textContent = on ? 'İzleme açık. Sonuçlar "Ana ekran" sekmesinde görünür; bu sekmeyi/sayfayı açık tutun.' : '';
+  $('icHint').textContent = on ? 'İzleme açık. Canlı görüntü ve okunan plakalar "Ana ekran" sekmesinde görünür; bu sayfayı açık tutun.' : '';
+  homeUi();
 }
 setInterval(() => {   // canlı durum + küçük resimler
   document.querySelectorAll('[data-cid]').forEach(el => {
@@ -2026,7 +2149,7 @@ window.ipcamTest = async id => {
   toast(S.ok ? `${c.name}: bağlantı başarılı (${S.cv.width}×${S.cv.height})` : `${c.name}: ${S.err || 'yanıt yok'}`);
   S.stop();
 };
-$('icRun').onclick = () => mon ? stopAll() : startAll(true);
+$('icRun').onclick = () => { if(mon){ stopAll(); return; } startAll(true); if(mon) goHome(); };
 
 /* go2rtc ayar üretici */
 const gen = () => {
@@ -2039,6 +2162,104 @@ const gen = () => {
 };
 ['gRtsp', 'gName', 'gHost'].forEach(i => $(i).oninput = gen);
 $('gCopy').onclick = async () => { try{ await navigator.clipboard.writeText($('gCopy').dataset.y); toast('Kopyalandı.'); }catch(e){ toast('Kopyalanamadı, metni elle seçin.'); } };
+
+/* ---------- Ana ekran: IP kamera canlı görüntü paneli (aç / kapat) ----------
+   Kameralar açılınca Ana ekranda her kamera için canlı kare, bulunan plaka kutusu ve
+   okuma durumu (aday plaka + yüzde) görünür. Tıklayınca kare büyür. */
+const lst = document.createElement('style');
+lst.textContent = `
+.fa-play{--fa:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath d='M96 64 448 256 96 448z' stroke='black' stroke-width='48' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.fa-stop{--fa:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect x='96' y='96' width='320' height='320' rx='48'/%3E%3C/svg%3E")}
+.ipl-grid{display:grid;gap:.75rem;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.ipl-tile{position:relative;aspect-ratio:16/9;background:#000;border:1px solid rgba(148,163,184,.28);border-radius:.8rem;overflow:hidden;cursor:zoom-in;max-height:78vh}
+.ipl-tile.big{grid-column:1/-1;cursor:zoom-out}
+.ipl-tile canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.ipl-tile.off canvas{opacity:.3}
+.ipl-top{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:.4rem;padding:.4rem .5rem;background:linear-gradient(rgba(2,6,23,.85),transparent);color:#fff;font-size:.75rem}
+.ipl-top b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ipl-top .r{color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ipl-dot{width:.55rem;height:.55rem;border-radius:999px;flex-shrink:0;background:#64748b}
+.ipl-x{margin-left:auto;width:1.8rem;height:1.8rem;border-radius:.5rem;display:grid;place-items:center;background:rgba(2,6,23,.75);color:#fff;flex-shrink:0;cursor:pointer}
+.ipl-bot{position:absolute;left:0;right:0;bottom:0;padding:.5rem;display:flex;flex-direction:column;gap:.35rem;align-items:flex-start;background:linear-gradient(transparent,rgba(2,6,23,.9))}
+.ipl-msg{font-size:.72rem;font-weight:600;color:#7dd3fc;background:rgba(2,6,23,.75);padding:.2rem .6rem;border-radius:999px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ipl-plate{font-weight:800;font-size:.95rem;padding:.2rem .7rem;border-radius:.5rem;letter-spacing:.06em;max-width:100%}
+.ipl-plate.ok{background:#16a34a;color:#fff}
+.ipl-plate.rd{background:#f59e0b;color:#1c1917}
+.ipl-plate.sn{background:#334155;color:#e2e8f0}
+.ipl-offbox{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;color:#94a3b8;font-size:.8rem;cursor:default}
+html[data-theme="light"] .ipl-tile{border-color:#cbd5e1}
+`;
+document.head.appendChild(lst);
+
+const live = document.createElement('section');
+live.id = 'ipLiveSec';
+live.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5';
+live.style.gridColumn = '1 / -1';
+live.innerHTML = `<h2 class="font-semibold text-white mb-3"><i class="fa-solid fa-video text-sky-400 mr-2"></i>IP kamera canlı görüntü <span id="ipLiveCnt" class="text-slate-500 font-normal"></span></h2>
+<div class="flex flex-wrap items-center gap-2 mb-1"><button id="ipLiveBtn" class="btn text-white"></button><span id="ipLiveHint" class="text-xs text-slate-400"></span></div>
+<div id="ipLiveGrid" class="ipl-grid" style="margin-top:.75rem"></div>`;
+$('pane-home').prepend(live);
+
+const goHome = () => { const b = document.querySelector('#pnav button[data-t="home"]'); if(b) b.click(); };
+$('ipLiveBtn').onclick = () => mon ? stopAll() : startAll(true);
+$('ipLiveGrid').onclick = e => {   // karta dokun: büyüt / küçült
+  const t = e.target.closest('.ipl-tile');
+  if(t && !e.target.closest('button') && t.querySelector('canvas')) t.classList.toggle('big');
+};
+
+const tileHtml = c => rt[c.id]
+  ? `<div class="ipl-tile off" data-lid="${c.id}" title="Büyütmek / küçültmek için dokunun"><canvas width="640" height="360"></canvas>
+      <div class="ipl-top"><span class="ipl-dot"></span><b>${esc(c.name)}</b><span class="r">· ${esc(ROLES[c.role] || '')}</span><button class="ipl-x" title="Bu kamerayı kapat" aria-label="Bu kamerayı kapat" onclick="ipcamToggle('${c.id}')"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="ipl-bot"><div class="ipl-plate" style="display:none"></div><div class="ipl-msg">Bağlanıyor...</div></div></div>`
+  : `<div class="ipl-tile" data-lid="${c.id}" style="cursor:default"><div class="ipl-offbox"><b style="color:#e2e8f0">${esc(c.name)}</b><span>Kapalı</span><button class="chip" onclick="ipcamToggle('${c.id}')">Aç</button></div></div>`;
+
+let lsig = '';
+function homeUi(){
+  const on = !!mon, nrun = Object.keys(rt).length, g = $('ipLiveGrid');
+  live.style.display = cams.length ? '' : 'none';
+  $('ipLiveCnt').textContent = on ? `(${nrun}/${cams.length} açık)` : '';
+  const b = $('ipLiveBtn');
+  b.innerHTML = on ? '<i class="fa-solid fa-stop"></i>Kameraları kapat' : '<i class="fa-solid fa-play"></i>Kameraları aç';
+  b.className = 'btn text-white ' + (on ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500');
+  $('ipLiveHint').textContent = on ? 'Plaka bulununca kutuya alınır; okuma %100\'e ulaşınca kayıt otomatik yapılır. Büyütmek için görüntüye dokunun.' : 'Kapalı. Canlı görüntü ve otomatik plaka okuma için kameraları açın.';
+  if(!on){ g.style.display = 'none'; g.innerHTML = ''; lsig = ''; return; }
+  g.style.display = '';
+  const sig = cams.map(c => c.id + (rt[c.id] ? '1' : '0')).join(',');
+  if(sig !== lsig){ lsig = sig; g.innerHTML = cams.map(tileHtml).join(''); }
+}
+
+const setTxt = (el, t) => { if(el.textContent !== t) el.textContent = t; };
+function paintLive(){
+  if(!mon || document.hidden || !live.offsetParent) return;
+  const now = Date.now();
+  live.querySelectorAll('.ipl-tile[data-lid]').forEach(el => {
+    const R = rt[el.dataset.lid], cvs = el.querySelector('canvas'); if(!R || !cvs) return;
+    const S = R.src, ok = S.ok && now - S.t < 8000 && S.cv.width > 0, hit = R.hit && now - R.hit.t < 6000;
+    el.classList.toggle('off', !ok);
+    el.querySelector('.ipl-dot').style.background = ok ? '#10b981' : '#f59e0b';
+    if(ok){
+      const k = Math.min(1, 640 / S.cv.width), w = Math.round(S.cv.width * k), h = Math.round(S.cv.height * k);
+      if(cvs.width !== w || cvs.height !== h){ cvs.width = w; cvs.height = h; }
+      const g = cvs.getContext('2d'); g.drawImage(S.cv, 0, 0, w, h);
+      const D = R.det;
+      if(D && now - D.t < 2500 && D.boxes.length){
+        const col = hit ? '#22c55e' : R.phase === 'read' ? '#f59e0b' : '#38bdf8', sx = w / D.W, sy = h / D.H;
+        g.lineWidth = Math.max(2, w / 200); g.strokeStyle = col; g.fillStyle = col + '2e';
+        D.boxes.forEach(b => { g.fillRect(b.x * sx, b.y * sy, b.w * sx, b.h * sy); g.strokeRect(b.x * sx, b.y * sy, b.w * sx, b.h * sy); });
+      }
+    }
+    setTxt(el.querySelector('.ipl-msg'), R.msg || '');
+    const chip = el.querySelector('.ipl-plate');
+    let cls = '', txt = '';
+    if(hit){ cls = 'ok'; txt = `✓ ${fmt(R.hit.plate)} okundu`; }
+    else if(R.phase === 'read' && R.cand){ cls = 'rd'; txt = `${fmt(R.cand.plate)} · okunuyor %${Math.min(99, Math.round((R.cand.score || 0) / 110 * 100))}`; }
+    else if(R.phase === 'seen' && R.cand){ cls = 'sn'; txt = `${fmt(R.cand.plate)} · kadrajda (tekrar kaydedilmez)`; }
+    chip.style.display = txt ? '' : 'none';
+    if(txt){ chip.className = 'ipl-plate ' + cls; setTxt(chip, txt); }
+  });
+}
+setInterval(paintLive, 200);
+
 
 ui();
 if($('icAuto').checked && cams.length) setTimeout(startAll, 1500);
