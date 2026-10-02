@@ -1835,7 +1835,7 @@ const reportCard = card('<i class="fa-solid fa-chart-column text-sky-400 mr-2"><
 P.rep.append(reportCard);
 P.upd.append(card('<i class="fa-solid fa-cloud-arrow-down text-sky-400 mr-2"></i>Güncellemeler', `
   <div class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-    <div><div class="text-xs uppercase tracking-wider text-slate-400">Yüklü sürüm</div><div id="appVersion" class="mt-1 text-2xl font-extrabold text-white">v1.0.5</div><div class="mt-1 text-sm text-slate-400">PTS · Plaka Takip Sistemi</div></div>
+    <div><div class="text-xs uppercase tracking-wider text-slate-400">Yüklü sürüm</div><div id="appVersion" class="mt-1 text-2xl font-extrabold text-white">v1.0.6</div><div class="mt-1 text-sm text-slate-400">PTS · Plaka Takip Sistemi</div></div>
     <span class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">Kararlı sürüm</span>
   </div>
   <div class="mt-4 rounded-xl border border-slate-800 p-4"><h3 class="font-semibold text-white">Güncelleme durumu</h3><p id="updateCheckStatus" class="mt-2 text-sm text-slate-400" aria-live="polite">Güncellemeleri istediğiniz zaman kontrol edebilirsiniz.</p>
@@ -2032,8 +2032,8 @@ window.PTSShowUpdate = release => {
   updateButton.innerHTML='<i class="fa-solid fa-rotate"></i>Yeniden kontrol et';
   installUpdateButton.hidden=true; bannerInstallButton.hidden=true; document.getElementById('updateReleaseDetails').hidden=true;
   if(!release?.checked) updateStatus.textContent='Güncelleme sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edip yeniden deneyin.';
-  else if(release?.available) updateStatus.textContent=`Yeni sürüm bulundu: ${release.version} · Yüklü sürüm: v${release.currentVersion||'1.0.5'}`;
-  else updateStatus.textContent=`Uygulamanız güncel${release?.latestVersion?` · Son sürüm: v${String(release.latestVersion).replace(/^v/i,'')}`:''}. Yüklü sürüm: v${String(release?.currentVersion||'1.0.5').replace(/^v/i,'')}.`;
+  else if(release?.available) updateStatus.textContent=`Yeni sürüm bulundu: ${release.version} · Yüklü sürüm: v${release.currentVersion||'1.0.6'}`;
+  else updateStatus.textContent=`Uygulamanız güncel${release?.latestVersion?` · Son sürüm: v${String(release.latestVersion).replace(/^v/i,'')}`:''}. Yüklü sürüm: v${String(release?.currentVersion||'1.0.6').replace(/^v/i,'')}.`;
   if(!release?.available||licenseExpired()) { updateBanner.style.display='none'; return; }
   document.getElementById('updateBannerTitle').textContent=`✨ PTS için yeni sürüm yayınlandı: ${release.version}`;
   document.getElementById('updateBannerCopy').textContent=`${release.name?release.name+' · ':''}${release.canInstall?'Güncelle düğmesi PTS’yi kapatıp yeni sürümü kuracak ve yeniden açacak.':'Yeni sürümü GitHub sürüm sayfasından indirebilirsiniz.'}`;
@@ -3105,7 +3105,7 @@ if('serviceWorker' in navigator && (location.protocol === 'https:' || location.h
   };
   const status = document.getElementById('ptsMonitoringStatus');
   if(!status) return;
-  let app = null, auth = null, db = null, machineName = '', appVersion = '1.0.5', machineNamePending = null, lastSync = 0, syncing = false;
+  let app = null, auth = null, db = null, machineName = '', appVersion = '1.0.6', machineNamePending = null, lastSync = 0, syncing = false;
 
   function setStatus(text, bad){ status.textContent=text; status.style.color=bad?'#fca5a5':''; }
   function readLicense(){
@@ -3175,7 +3175,7 @@ if('serviceWorker' in navigator && (location.protocol === 'https:' || location.h
   const modal=document.createElement('div');
   modal.id='ptsAdminModal';
   modal.style.cssText='display:none;position:fixed;inset:0;z-index:120;overflow:auto;padding:18px;background:rgba(2,6,23,.82);backdrop-filter:blur(8px)';
-  modal.innerHTML=`<section style="max-width:980px;margin:4vh auto;background:#111827;border:1px solid #334155;border-radius:22px;box-shadow:0 24px 80px #0009;color:#e2e8f0;overflow:hidden"><header style="padding:18px 22px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:12px;color:#38bdf8;letter-spacing:.15em;font-weight:800">PTS · ÜRETİCİ PANELİ</div><h2 style="font-size:22px;font-weight:800;margin-top:4px">Cihaz ve lisans takibi</h2></div><button id="ptsAdminClose" class="btn bg-slate-700 hover:bg-slate-600" aria-label="Kapat">✕</button></header><div style="padding:20px" id="ptsAdminLogin"><p style="color:#94a3b8;margin-bottom:14px">Yönetici hesabınla giriş yap. Bu bilgisayarda parola kaydedilmez.</p><label style="display:block;font-size:13px;margin-bottom:12px">Yönetici e-postası<input id="ptsAdminEmail" class="inp" type="email" readonly value="${ADMIN_EMAIL}" style="display:block;width:100%;margin-top:5px"></label><label style="display:block;font-size:13px;margin-bottom:14px">Şifre<input id="ptsAdminPassword" class="inp" type="password" autocomplete="current-password" style="display:block;width:100%;margin-top:5px"></label><div style="display:flex;gap:10px;flex-wrap:wrap"><button id="ptsAdminSignIn" class="btn bg-sky-600 hover:bg-sky-500 text-white">Giriş yap</button><button id="ptsAdminSignUp" class="btn bg-slate-700 hover:bg-slate-600">Yönetici hesabı oluştur</button></div><p id="ptsAdminAuthStatus" role="status" style="font-size:13px;color:#94a3b8;margin-top:12px"></p></div><div id="ptsAdminDashboard" style="display:none;padding:20px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px"><p id="ptsAdminSummary" style="color:#cbd5e1"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="ptsAdminRefresh" class="btn bg-sky-600 hover:bg-sky-500 text-white">Yenile</button><button id="ptsAdminSignOut" class="btn bg-slate-700 hover:bg-slate-600">Çıkış</button></div></div><p id="ptsAdminDataStatus" role="status" style="font-size:13px;color:#94a3b8;margin:8px 0"></p><div style="overflow:auto;max-height:60vh;border:1px solid #334155;border-radius:12px"><table style="width:100%;min-width:760px;border-collapse:collapse;font-size:13px"><thead style="position:sticky;top:0;background:#1e293b"><tr>${['Durum','Müşteri','Lisans no','Bitiş / gün','Bilgisayar','Sürüm','Son bağlantı'].map(x=>`<th style="text-align:left;padding:11px;border-bottom:1px solid #334155">${x}</th>`).join('')}</tr></thead><tbody id="ptsAdminRows"></tbody></table></div><p style="font-size:11px;color:#64748b;margin-top:12px">Aktif: son 20 dakikada bağlantı ve geçerli lisans. IP adresi toplanmaz.</p></div></section>`;
+  modal.innerHTML=`<section style="max-width:980px;margin:4vh auto;background:#111827;border:1px solid #334155;border-radius:22px;box-shadow:0 24px 80px #0009;color:#e2e8f0;overflow:hidden"><header style="padding:18px 22px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:12px;color:#38bdf8;letter-spacing:.15em;font-weight:800">PTS · ÜRETİCİ PANELİ</div><h2 style="font-size:22px;font-weight:800;margin-top:4px">Cihaz ve lisans takibi</h2></div><button id="ptsAdminClose" class="btn bg-slate-700 hover:bg-slate-600" aria-label="Kapat">✕</button></header><div style="padding:20px" id="ptsAdminLogin"><p style="color:#94a3b8;margin-bottom:14px">Yönetici hesabınla giriş yap. Bu bilgisayarda parola kaydedilmez.</p><label style="display:block;font-size:13px;margin-bottom:12px">Yönetici e-postası<input id="ptsAdminEmail" class="inp" type="email" readonly value="${ADMIN_EMAIL}" style="display:block;width:100%;margin-top:5px"></label><label style="display:block;font-size:13px;margin-bottom:14px">Şifre<input id="ptsAdminPassword" class="inp" type="password" autocomplete="current-password" style="display:block;width:100%;margin-top:5px"></label><div style="display:flex;gap:10px;flex-wrap:wrap"><button id="ptsAdminSignIn" class="btn bg-sky-600 hover:bg-sky-500 text-white">Giriş yap</button><button id="ptsAdminSignUp" class="btn bg-slate-700 hover:bg-slate-600">Yönetici hesabı oluştur</button></div><p id="ptsAdminAuthStatus" role="status" style="font-size:13px;color:#94a3b8;margin-top:12px"></p></div><div id="ptsAdminDashboard" style="display:none;padding:20px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px"><p id="ptsAdminSummary" style="color:#cbd5e1"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="ptsAdminRefresh" class="btn bg-sky-600 hover:bg-sky-500 text-white">Yenile</button><button id="ptsAdminSignOut" class="btn bg-slate-700 hover:bg-slate-600">Çıkış</button></div></div><p id="ptsAdminDataStatus" role="status" style="font-size:13px;color:#94a3b8;margin:8px 0"></p><div style="overflow:auto;max-height:60vh;border:1px solid #334155;border-radius:12px"><table style="width:100%;min-width:760px;border-collapse:collapse;font-size:13px"><thead style="position:sticky;top:0;background:#1e293b"><tr>${['Durum','Müşteri','Lisans no','Bitiş / gün','Bilgisayar','Sürüm','Son bağlantı'].map(x=>`<th style="text-align:left;padding:11px;border-bottom:1px solid #334155">${x}</th>`).join('')}</tr></thead><tbody id="ptsAdminRows"></tbody></table></div><p style="font-size:11px;color:#64748b;margin-top:12px">Aktif: son 20 dakikada bağlantı ve geçerli lisans. Bilgisayar adı olmayan eski kayıtlar lisansa göre gruplanır; fiziksel cihaz sayısı kesin olmayabilir. IP adresi toplanmaz.</p></div></section>`;
   document.body.appendChild(modal);
   const $a=id=>document.getElementById(id), loginBox=$a('ptsAdminLogin'), dash=$a('ptsAdminDashboard');
   const authStatus=(s,bad=false)=>{const el=$a('ptsAdminAuthStatus');el.textContent=s;el.style.color=bad?'#fca5a5':'#94a3b8';};
@@ -3199,16 +3199,27 @@ if('serviceWorker' in navigator && (location.protocol === 'https:' || location.h
       await loadFirebase();
       if(!adminAuth.currentUser||!adminAuth.currentUser.emailVerified)throw new Error('Yönetici oturumu kapalı.');
       const snap=await adminDb.collection('installations').orderBy('lastSeen','desc').limit(300).get();
-      const now=Date.now(),docs=snap.docs.map(d=>({id:d.id,...d.data()}));
-      const active=docs.filter(x=>x.licenseActive&&x.lastSeen?.toDate&&now-x.lastSeen.toDate().getTime()<=20*60*1000).length;
-      $a('ptsAdminSummary').textContent=`Toplam ${docs.length} cihaz · ${active} aktif`;
-      body.innerHTML=docs.map(x=>{
+      const now=Date.now(),docs=snap.docs.map(d=>({id:d.id,...d.data()})),groups=new Map();
+      for(const x of docs){
+        const machine=String(x.machineName||'').trim().toLocaleLowerCase('tr-TR');
+        const unknown=!machine||/bilinmeyen|windows bilgisayar|unknown/i.test(machine);
+        const key=unknown?`unknown:${String(x.licenseId||x.customer||'').toLocaleLowerCase('tr-TR')}`:`pc:${String(x.licenseId||'').toLocaleLowerCase('tr-TR')}:${machine}`;
+        const prior=groups.get(key);
+        if(!prior)groups.set(key,{...x,mergedCount:1,unknownDeviceName:unknown});
+        else{prior.mergedCount++;const oldMs=prior.lastSeen?.toDate?prior.lastSeen.toDate().getTime():0,newMs=x.lastSeen?.toDate?x.lastSeen.toDate().getTime():0;if(newMs>oldMs)groups.set(key,{...x,mergedCount:prior.mergedCount,unknownDeviceName:unknown});}
+      }
+      const unique=[...groups.values()];
+      const active=unique.filter(x=>x.licenseActive&&x.lastSeen?.toDate&&now-x.lastSeen.toDate().getTime()<=20*60*1000).length;
+      const merged=docs.length-unique.length;
+      $a('ptsAdminSummary').textContent=`${unique.length} cihaz grubu · ${active} aktif${merged?` · ${merged} tekrar birleştirildi`:''}`;
+      body.innerHTML=unique.map(x=>{
         const seen=x.lastSeen?.toDate?x.lastSeen.toDate():null,online=!!(x.licenseActive&&seen&&now-seen.getTime()<=20*60*1000);
         const safe=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const last=seen?new Intl.DateTimeFormat('tr-TR',{dateStyle:'short',timeStyle:'short'}).format(seen):'—';
-        return `<tr><td style="padding:10px;border-bottom:1px solid #263244;color:${online?'#34d399':'#fbbf24'}">${online?'Aktif':'Pasif'}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.customer)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.licenseId)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.expiresAt)}<br>${safe(x.daysRemaining)} gün</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.machineName)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.appVersion)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(last)}</td></tr>`;
+        const pcLabel=x.unknownDeviceName?'Bilgisayar adı alınamadı':safe(x.machineName);
+        return `<tr><td style="padding:10px;border-bottom:1px solid #263244;color:${online?'#34d399':'#fbbf24'}">${online?'Aktif':'Pasif'}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.customer)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.licenseId)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.expiresAt)}<br>${safe(x.daysRemaining)} gün</td><td style="padding:10px;border-bottom:1px solid #263244">${pcLabel}${x.mergedCount>1?`<br><small style="color:#94a3b8">${x.mergedCount} bağlantı kaydı birleştirildi</small>`:''}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.appVersion)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(last)}</td></tr>`;
       }).join('')||'<tr><td colspan="7" style="padding:22px;text-align:center;color:#94a3b8">Henüz cihaz kaydı yok.</td></tr>';
-      status.textContent='Son yenileme: '+new Date().toLocaleTimeString('tr-TR');
+      status.textContent='Son yenileme: '+new Date().toLocaleTimeString('tr-TR')+(merged?' · Bilgisayar adı olmayan eski kayıtlar aynı lisans altında gruplanır.':'');
     }catch(e){status.textContent='Kayıtlar okunamadı: '+(e.message||'bağlantı hatası');}
   }
   async function signIn(){
