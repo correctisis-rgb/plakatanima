@@ -3233,7 +3233,10 @@ if('serviceWorker' in navigator && (location.protocol === 'https:' || location.h
   $a('ptsAdminSignIn').onclick=signIn;$a('ptsAdminSignUp').onclick=signUp;$a('ptsAdminRefresh').onclick=refreshRows;
   $a('ptsAdminSignOut').onclick=async()=>{if(adminAuth)await adminAuth.signOut();dash.style.display='none';loginBox.style.display='block';$a('ptsAdminPassword').value='';authStatus('Oturum kapatıldı.');};
   document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==='a'){e.preventDefault();openAdmin();}if(e.key==='Escape'&&modal.style.display==='block')closeAdmin();});
-  document.querySelector('.pts-logo')?.addEventListener('click',()=>{logoClicks++;clearTimeout(logoClickTimer);logoClickTimer=setTimeout(()=>logoClicks=0,1800);if(logoClicks>=5){logoClicks=0;openAdmin();}});
+  const adminTapTrigger=()=>{logoClicks++;clearTimeout(logoClickTimer);logoClickTimer=setTimeout(()=>logoClicks=0,1800);if(logoClicks>=5){logoClicks=0;openAdmin();}};
+  document.querySelector('.pts-logo')?.addEventListener('click',adminTapTrigger);
+  document.querySelector('.pts-brand h1')?.addEventListener('click',adminTapTrigger);
+  document.querySelector('#pane-lic h2')?.addEventListener('click',adminTapTrigger);
 })();
 </script>
 </body>
