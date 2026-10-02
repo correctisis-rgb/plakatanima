@@ -1835,7 +1835,7 @@ const reportCard = card('<i class="fa-solid fa-chart-column text-sky-400 mr-2"><
 P.rep.append(reportCard);
 P.upd.append(card('<i class="fa-solid fa-cloud-arrow-down text-sky-400 mr-2"></i>Güncellemeler', `
   <div class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-    <div><div class="text-xs uppercase tracking-wider text-slate-400">Yüklü sürüm</div><div id="appVersion" class="mt-1 text-2xl font-extrabold text-white">v1.0.4</div><div class="mt-1 text-sm text-slate-400">PTS · Plaka Takip Sistemi</div></div>
+    <div><div class="text-xs uppercase tracking-wider text-slate-400">Yüklü sürüm</div><div id="appVersion" class="mt-1 text-2xl font-extrabold text-white">v1.0.5</div><div class="mt-1 text-sm text-slate-400">PTS · Plaka Takip Sistemi</div></div>
     <span class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">Kararlı sürüm</span>
   </div>
   <div class="mt-4 rounded-xl border border-slate-800 p-4"><h3 class="font-semibold text-white">Güncelleme durumu</h3><p id="updateCheckStatus" class="mt-2 text-sm text-slate-400" aria-live="polite">Güncellemeleri istediğiniz zaman kontrol edebilirsiniz.</p>
@@ -1954,7 +1954,7 @@ P.set.append(s1, sec('kOrg'), s2, s3);
 /* Lisans takibi ve imzalı lisans yükleme */
 const LICENSE_KEY = 'pts_license_v1';
 const LICENSE_PUBLIC_KEY = 'MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA3j3ACd+kyrdHQWKVSVwsUEnvcrYo15KhWYdchfl38sbt1b0oztvobk53SqqvcD7P3uIp3lQEovL5ee5xXliRPczIWFLqzoI1RAARqU7PSGeCcwL/ObE0dJEVxWE8D+lmm+fGK+CGFdxvDoYgPIVXtP88Bg3+Xoe92bZyk3HW7zMeICqVe0eUWMsER4Fafa9Lqc2BGRanBd6trw7Y8V+oGH0SohJZJQ87NU3sokMwzHikNBmJ2cmt77y25/koarmN4bkfIYAgbfm3cdnJlqD/9pWSV4aQ8pBruObBQd6Cqeqzo72AGS3F/vVPQnshiNUtvttm/02JSMYMVyP4r/mJyzJMliHmFNKRJze1YkLsf4/mxPcUazSLHmIvfZRBJ8aKJgiUUyoBkGePJg6GNgaJMsKsDfOuXPS3ao6/qIzRnh02xaw1+ZSsmw49AWERM9RgpuJBP+bQF5iEbUxooBuhF2hVuz8+wdJL8AqcyqWMlnIdbddkEcZyJCS0w33WicURAgMBAAE=';
-const licCard = card('<i class="fa-solid fa-key text-amber-400 mr-2"></i>Lisansım', `<div id="licStatus" class="rounded-xl border border-slate-700 p-5 mb-4"></div><div class="flex flex-wrap items-center gap-3"><label class="btn bg-sky-600 hover:bg-sky-500 text-white cursor-pointer"><i class="fa-solid fa-file-import"></i>Lisansı yükle / yenile<input id="licFile" type="file" accept=".ptslic,.txt,application/json" class="hidden"></label><span class="text-sm text-slate-400">Size iletilen .ptslic yenileme dosyasını seçin.</span></div><p id="licMessage" class="text-sm text-slate-400 mt-3" aria-live="polite"></p><p class="text-xs text-slate-500 mt-4">Lisans bu cihazdaki tarayıcı profilinde saklanır. Verilerinizi silmeniz veya başka tarayıcıya geçmeniz halinde lisans dosyasını yeniden yükleyin.</p>`);
+const licCard = card('<i class="fa-solid fa-key text-amber-400 mr-2"></i>Lisansım', `<div id="licStatus" class="rounded-xl border border-slate-700 p-5 mb-4"></div><div class="flex flex-wrap items-center gap-3"><label class="btn bg-sky-600 hover:bg-sky-500 text-white cursor-pointer"><i class="fa-solid fa-file-import"></i>Lisansı yükle / yenile<input id="licFile" type="file" class="hidden"></label><span class="text-sm text-slate-400">Size iletilen .ptslic yenileme dosyasını seçin.</span></div><p id="licMessage" class="text-sm text-slate-400 mt-3" aria-live="polite"></p><div class="mt-5 rounded-xl border border-slate-700 bg-slate-900/60 p-4"><div class="font-bold text-slate-200">Lisans/kurulum durumu bildirimi</div><p class="mt-1 text-xs text-slate-400">Etkin lisans yüklendiğinde cihaz kaydı otomatik gönderilir ve program açıkken düzenli güncellenir. Lisans numarası, işletme adı, lisans bitiş tarihi, bu bilgisayarın adı, PTS sürümü ve son bağlantı saati PTS Lisans Takip projesinde görünür. IP adresi gönderilmez.</p><p id="ptsMonitoringStatus" class="mt-2 text-xs text-slate-400" aria-live="polite">Lisans durumu bekleniyor…</p></div><p class="text-xs text-slate-500 mt-4">Lisans bu cihazdaki tarayıcı profilinde saklanır. Verilerinizi silmeniz veya başka tarayıcıya geçmeniz halinde lisans dosyasını yeniden yükleyin.</p>`);
 P.lic.append(licCard);
 const licB64 = s => Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(s.length/4)*4,'=')), c => c.charCodeAt(0));
 const licB64url = s => { const b=licB64(s); return new TextDecoder().decode(b); };
@@ -1975,7 +1975,7 @@ const renderLicense = () => {
   box.innerHTML=`<div class="flex flex-wrap items-start justify-between gap-3"><div><div class="text-xs uppercase tracking-wider text-slate-400">${expired?'LİSANS SÜRESİ DOLDU':warn?'LİSANS BİTİŞİ YAKLAŞIYOR':'LİSANS AKTİF'}</div><div class="text-xl font-bold text-white mt-1">${esc(payload.customer||'PTS kullanıcısı')}</div><div class="text-sm text-slate-400 mt-1">Lisans no: ${esc(payload.licenseId||'-')}</div></div><div class="text-right"><div class="text-2xl font-extrabold ${expired?'text-red-400':warn?'text-amber-300':'text-emerald-400'}">${expired?'Süresi doldu':remaining===0?'Son gün':remaining+' gün kaldı'}</div><div class="text-sm text-slate-400">${esc(payload.startsAt)} — ${esc(payload.expiresAt)}</div></div></div>`;
   refreshLicenseBanner();
 };
-$('licFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;const m=$('licMessage');m.textContent='Lisans doğrulanıyor…';try{const token=(await f.text()).trim();const parts=token.split('.');if(parts.length!==2)throw new Error('Lisans dosyası biçimi geçersiz.');const key=await crypto.subtle.importKey('spki',Uint8Array.from(atob(LICENSE_PUBLIC_KEY),c=>c.charCodeAt(0)),{name:'RSA-PSS',hash:'SHA-256'},false,['verify']);const ok=await crypto.subtle.verify({name:'RSA-PSS',saltLength:32},key,licB64(parts[1]),new TextEncoder().encode(licB64url(parts[0])));if(!ok)throw new Error('Lisans imzası geçersiz. Üreticinizden yeni dosya isteyin.');const p=JSON.parse(licB64url(parts[0]));if(p.product!=='PTS'||p.kid!=='pts-main-2026'||!p.licenseId||!p.customer||!p.startsAt||!p.expiresAt)throw new Error('Lisans başka bir ürün için veya eksik bilgiler içeriyor.');if(!/^\d{4}-\d{2}-\d{2}$/.test(p.startsAt)||!/^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt)||p.expiresAt<p.startsAt)throw new Error('Lisans tarihleri geçersiz.');const today=new Date().toLocaleDateString('sv-SE');if(today<p.startsAt)throw new Error('Bu lisans '+p.startsAt+' tarihinde etkinleşecek.');localStorage.setItem(LICENSE_KEY,JSON.stringify(token));m.textContent='Lisans doğrulandı ve kaydedildi.';renderLicense();applyLicenseLock();}catch(err){m.textContent=err.message||'Lisans okunamadı.';}finally{e.target.value='';}};
+$('licFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;const m=$('licMessage');m.textContent='Lisans doğrulanıyor…';try{const token=(await f.text()).trim();const parts=token.split('.');if(parts.length!==2)throw new Error('Lisans dosyası biçimi geçersiz.');const key=await crypto.subtle.importKey('spki',Uint8Array.from(atob(LICENSE_PUBLIC_KEY),c=>c.charCodeAt(0)),{name:'RSA-PSS',hash:'SHA-256'},false,['verify']);const ok=await crypto.subtle.verify({name:'RSA-PSS',saltLength:32},key,licB64(parts[1]),new TextEncoder().encode(licB64url(parts[0])));if(!ok)throw new Error('Lisans imzası geçersiz. Üreticinizden yeni dosya isteyin.');const p=JSON.parse(licB64url(parts[0]));if(p.product!=='PTS'||p.kid!=='pts-main-2026'||!p.licenseId||!p.customer||!p.startsAt||!p.expiresAt)throw new Error('Lisans başka bir ürün için veya eksik bilgiler içeriyor.');if(!/^\d{4}-\d{2}-\d{2}$/.test(p.startsAt)||!/^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt)||p.expiresAt<p.startsAt)throw new Error('Lisans tarihleri geçersiz.');const today=new Date().toLocaleDateString('sv-SE');if(today<p.startsAt)throw new Error('Bu lisans '+p.startsAt+' tarihinde etkinleşecek.');localStorage.setItem(LICENSE_KEY,JSON.stringify(token));m.textContent='Lisans doğrulandı ve kaydedildi.';renderLicense();applyLicenseLock();window.dispatchEvent(new Event('pts-license-updated'));}catch(err){m.textContent=err.message||'Lisans okunamadı.';}finally{e.target.value='';}};
 renderLicense();
 document.querySelectorAll('section h2 + span, section > div > span.flex').forEach(e => { if(!e.children.length) e.remove(); });
 
@@ -2032,8 +2032,8 @@ window.PTSShowUpdate = release => {
   updateButton.innerHTML='<i class="fa-solid fa-rotate"></i>Yeniden kontrol et';
   installUpdateButton.hidden=true; bannerInstallButton.hidden=true; document.getElementById('updateReleaseDetails').hidden=true;
   if(!release?.checked) updateStatus.textContent='Güncelleme sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edip yeniden deneyin.';
-  else if(release?.available) updateStatus.textContent=`Yeni sürüm bulundu: ${release.version} · Yüklü sürüm: v${release.currentVersion||'1.0.4'}`;
-  else updateStatus.textContent=`Uygulamanız güncel${release?.latestVersion?` · Son sürüm: v${String(release.latestVersion).replace(/^v/i,'')}`:''}. Yüklü sürüm: v${String(release?.currentVersion||'1.0.4').replace(/^v/i,'')}.`;
+  else if(release?.available) updateStatus.textContent=`Yeni sürüm bulundu: ${release.version} · Yüklü sürüm: v${release.currentVersion||'1.0.5'}`;
+  else updateStatus.textContent=`Uygulamanız güncel${release?.latestVersion?` · Son sürüm: v${String(release.latestVersion).replace(/^v/i,'')}`:''}. Yüklü sürüm: v${String(release?.currentVersion||'1.0.5').replace(/^v/i,'')}.`;
   if(!release?.available||licenseExpired()) { updateBanner.style.display='none'; return; }
   document.getElementById('updateBannerTitle').textContent=`✨ PTS için yeni sürüm yayınlandı: ${release.version}`;
   document.getElementById('updateBannerCopy').textContent=`${release.name?release.name+' · ':''}${release.canInstall?'Güncelle düğmesi PTS’yi kapatıp yeni sürümü kuracak ve yeniden açacak.':'Yeni sürümü GitHub sürüm sayfasından indirebilirsiniz.'}`;
@@ -3091,6 +3091,150 @@ window.addEventListener('load', () => {
 if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 }
+</script>
+<script>
+/* Etkin lisans varsa lisans/cihaz durumu otomatik olarak Firebase'e gönderilir. */
+(function(){
+  const PROJECT = {
+    apiKey: 'AIzaSyCBFxvUDIK8zczr_Vj7oe_GYlse6fbcT9c',
+    authDomain: 'pts-lisans-takip.firebaseapp.com',
+    projectId: 'pts-lisans-takip',
+    storageBucket: 'pts-lisans-takip.firebasestorage.app',
+    messagingSenderId: '394931615525',
+    appId: '1:394931615525:web:4cfd8bb8b9c3d220e44ccc'
+  };
+  const status = document.getElementById('ptsMonitoringStatus');
+  if(!status) return;
+  let app = null, auth = null, db = null, machineName = '', appVersion = '1.0.5', machineNamePending = null, lastSync = 0, syncing = false;
+
+  function setStatus(text, bad){ status.textContent=text; status.style.color=bad?'#fca5a5':''; }
+  function readLicense(){
+    try{
+      const token=JSON.parse(localStorage.getItem('pts_license_v1')||'null');
+      if(!token || typeof token!=='string') return null;
+      const part=token.split('.')[0].replace(/-/g,'+').replace(/_/g,'/');
+      const bytes=Uint8Array.from(atob(part.padEnd(Math.ceil(part.length/4)*4,'=')),c=>c.charCodeAt(0));
+      const p=JSON.parse(new TextDecoder().decode(bytes));
+      if(p.product!=='PTS'||!p.licenseId||!p.customer||!p.expiresAt) return null;
+      return p;
+    }catch(e){return null;}
+  }
+  function loadScript(src){return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=()=>reject(new Error('Firebase SDK yüklenemedi. İnternet bağlantısını kontrol edin.'));document.head.appendChild(s);});}
+  async function ensureFirebase(){
+    if(db) return;
+    if(!window.firebase) await loadScript('https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js');
+    if(!window.firebase.auth) await loadScript('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js');
+    if(!window.firebase.firestore) await loadScript('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js');
+    app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(PROJECT);
+    auth=window.firebase.auth(app); db=window.firebase.firestore(app);
+  }
+  function getMachineName(){
+    if(machineName) return Promise.resolve(machineName);
+    if(!window.chrome?.webview) return Promise.resolve('Bilinmeyen Windows PC');
+    if(machineNamePending) return machineNamePending;
+    machineNamePending=new Promise(resolve=>{
+      const timer=setTimeout(()=>{machineNamePending=null;resolve('Windows bilgisayarı');},2500);
+      window.PTSDeviceInfoReceived=info=>{machineName=String(info?.machineName||'Windows bilgisayarı').slice(0,100);appVersion=String(info?.appVersion||appVersion).slice(0,20);clearTimeout(timer);machineNamePending=null;resolve(machineName);};
+      window.chrome.webview.postMessage({type:'getDeviceInfo'});
+    });
+    return machineNamePending;
+  }
+  async function syncNow(force){
+    if(syncing) return;
+    if(!force && Date.now()-lastSync<10*60*1000) return;
+    const lic=readLicense();
+    if(!lic){setStatus('Etkin lisans bulunamadı; cihaz kaydı gönderilmedi.',true);return;}
+    syncing=true;
+    try{
+      await ensureFirebase();
+      if(!auth.currentUser) await auth.signInAnonymously();
+      const pc=await getMachineName();
+      const ref=db.collection('installations').doc(auth.currentUser.uid);
+      const today=new Date().toLocaleDateString('sv-SE');
+      const daysRemaining=Math.max(0,Math.ceil((Date.parse(lic.expiresAt+'T00:00:00Z')-Date.parse(today+'T00:00:00Z'))/86400000));
+      const licenseActive=lic.startsAt<=today&&today<lic.expiresAt;
+      await ref.set({licenseId:String(lic.licenseId).slice(0,32),customer:String(lic.customer).slice(0,120),expiresAt:String(lic.expiresAt),daysRemaining,licenseActive,machineName:pc,appVersion,lastSeen:window.firebase.firestore.FieldValue.serverTimestamp()});
+      lastSync=Date.now();
+      setStatus('Cihaz durumu Firebase’e gönderildi. Son bağlantı: '+new Date().toLocaleTimeString('tr-TR'));
+    }catch(e){setStatus('Cihaz durumu gönderilemedi: '+(e.message||'bağlantı hatası'),true);}
+    finally{syncing=false;}
+  }
+  window.addEventListener('pts-license-updated',()=>syncNow(true));
+  window.addEventListener('online',()=>syncNow(true));
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow(true);});
+  setInterval(()=>syncNow(false),60000);
+  syncNow(true);
+})();
+</script>
+<script>
+/* Üretici yönetimi: yalnızca allowlist'teki, doğrulanmış Firebase hesabı kayıtları okuyabilir. */
+(function(){
+  const PROJECT={apiKey:'AIzaSyCBFxvUDIK8zczr_Vj7oe_GYlse6fbcT9c',authDomain:'pts-lisans-takip.firebaseapp.com',projectId:'pts-lisans-takip',storageBucket:'pts-lisans-takip.firebasestorage.app',messagingSenderId:'394931615525',appId:'1:394931615525:web:4cfd8bb8b9c3d220e44ccc'};
+  const ADMIN_EMAIL='emre121856031@gmail.com';
+  let adminApp=null,adminAuth=null,adminDb=null,logoClicks=0,logoClickTimer=0;
+  const modal=document.createElement('div');
+  modal.id='ptsAdminModal';
+  modal.style.cssText='display:none;position:fixed;inset:0;z-index:120;overflow:auto;padding:18px;background:rgba(2,6,23,.82);backdrop-filter:blur(8px)';
+  modal.innerHTML=`<section style="max-width:980px;margin:4vh auto;background:#111827;border:1px solid #334155;border-radius:22px;box-shadow:0 24px 80px #0009;color:#e2e8f0;overflow:hidden"><header style="padding:18px 22px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:12px;color:#38bdf8;letter-spacing:.15em;font-weight:800">PTS · ÜRETİCİ PANELİ</div><h2 style="font-size:22px;font-weight:800;margin-top:4px">Cihaz ve lisans takibi</h2></div><button id="ptsAdminClose" class="btn bg-slate-700 hover:bg-slate-600" aria-label="Kapat">✕</button></header><div style="padding:20px" id="ptsAdminLogin"><p style="color:#94a3b8;margin-bottom:14px">Yönetici hesabınla giriş yap. Bu bilgisayarda parola kaydedilmez.</p><label style="display:block;font-size:13px;margin-bottom:12px">Yönetici e-postası<input id="ptsAdminEmail" class="inp" type="email" readonly value="${ADMIN_EMAIL}" style="display:block;width:100%;margin-top:5px"></label><label style="display:block;font-size:13px;margin-bottom:14px">Şifre<input id="ptsAdminPassword" class="inp" type="password" autocomplete="current-password" style="display:block;width:100%;margin-top:5px"></label><div style="display:flex;gap:10px;flex-wrap:wrap"><button id="ptsAdminSignIn" class="btn bg-sky-600 hover:bg-sky-500 text-white">Giriş yap</button><button id="ptsAdminSignUp" class="btn bg-slate-700 hover:bg-slate-600">Yönetici hesabı oluştur</button></div><p id="ptsAdminAuthStatus" role="status" style="font-size:13px;color:#94a3b8;margin-top:12px"></p></div><div id="ptsAdminDashboard" style="display:none;padding:20px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px"><p id="ptsAdminSummary" style="color:#cbd5e1"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="ptsAdminRefresh" class="btn bg-sky-600 hover:bg-sky-500 text-white">Yenile</button><button id="ptsAdminSignOut" class="btn bg-slate-700 hover:bg-slate-600">Çıkış</button></div></div><p id="ptsAdminDataStatus" role="status" style="font-size:13px;color:#94a3b8;margin:8px 0"></p><div style="overflow:auto;max-height:60vh;border:1px solid #334155;border-radius:12px"><table style="width:100%;min-width:760px;border-collapse:collapse;font-size:13px"><thead style="position:sticky;top:0;background:#1e293b"><tr>${['Durum','Müşteri','Lisans no','Bitiş / gün','Bilgisayar','Sürüm','Son bağlantı'].map(x=>`<th style="text-align:left;padding:11px;border-bottom:1px solid #334155">${x}</th>`).join('')}</tr></thead><tbody id="ptsAdminRows"></tbody></table></div><p style="font-size:11px;color:#64748b;margin-top:12px">Aktif: son 20 dakikada bağlantı ve geçerli lisans. IP adresi toplanmaz.</p></div></section>`;
+  document.body.appendChild(modal);
+  const $a=id=>document.getElementById(id), loginBox=$a('ptsAdminLogin'), dash=$a('ptsAdminDashboard');
+  const authStatus=(s,bad=false)=>{const el=$a('ptsAdminAuthStatus');el.textContent=s;el.style.color=bad?'#fca5a5':'#94a3b8';};
+  async function loadFirebase(){
+    const load=src=>new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>no(new Error('Firebase kitaplığı yüklenemedi. İnternet bağlantısını kontrol et.'));document.head.appendChild(s);});
+    if(!window.firebase)await load('https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js');
+    if(!window.firebase.auth)await load('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js');
+    if(!window.firebase.firestore)await load('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js');
+    adminApp=window.firebase.apps.find(a=>a.name==='pts-admin')||window.firebase.initializeApp(PROJECT,'pts-admin');
+    adminAuth=window.firebase.auth(adminApp);adminDb=window.firebase.firestore(adminApp);
+  }
+  function openAdmin(){modal.style.display='block';document.body.style.overflow='hidden';$a('ptsAdminPassword').focus();}
+  function closeAdmin(){modal.style.display='none';document.body.style.overflow='';}
+  async function showDashboard(user){
+    if((user.email||'').toLowerCase()!==ADMIN_EMAIL||!user.emailVerified){await adminAuth.signOut();loginBox.style.display='block';dash.style.display='none';authStatus('Bu yönetici hesabı için e-posta doğrulaması gerekli.',true);return;}
+    loginBox.style.display='none';dash.style.display='block';await refreshRows();
+  }
+  async function refreshRows(){
+    const status=$a('ptsAdminDataStatus'),body=$a('ptsAdminRows');status.textContent='Kayıtlar yükleniyor…';
+    try{
+      await loadFirebase();
+      if(!adminAuth.currentUser||!adminAuth.currentUser.emailVerified)throw new Error('Yönetici oturumu kapalı.');
+      const snap=await adminDb.collection('installations').orderBy('lastSeen','desc').limit(300).get();
+      const now=Date.now(),docs=snap.docs.map(d=>({id:d.id,...d.data()}));
+      const active=docs.filter(x=>x.licenseActive&&x.lastSeen?.toDate&&now-x.lastSeen.toDate().getTime()<=20*60*1000).length;
+      $a('ptsAdminSummary').textContent=`Toplam ${docs.length} cihaz · ${active} aktif`;
+      body.innerHTML=docs.map(x=>{
+        const seen=x.lastSeen?.toDate?x.lastSeen.toDate():null,online=!!(x.licenseActive&&seen&&now-seen.getTime()<=20*60*1000);
+        const safe=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const last=seen?new Intl.DateTimeFormat('tr-TR',{dateStyle:'short',timeStyle:'short'}).format(seen):'—';
+        return `<tr><td style="padding:10px;border-bottom:1px solid #263244;color:${online?'#34d399':'#fbbf24'}">${online?'Aktif':'Pasif'}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.customer)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.licenseId)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.expiresAt)}<br>${safe(x.daysRemaining)} gün</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.machineName)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(x.appVersion)}</td><td style="padding:10px;border-bottom:1px solid #263244">${safe(last)}</td></tr>`;
+      }).join('')||'<tr><td colspan="7" style="padding:22px;text-align:center;color:#94a3b8">Henüz cihaz kaydı yok.</td></tr>';
+      status.textContent='Son yenileme: '+new Date().toLocaleTimeString('tr-TR');
+    }catch(e){status.textContent='Kayıtlar okunamadı: '+(e.message||'bağlantı hatası');}
+  }
+  async function signIn(){
+    const email=$a('ptsAdminEmail').value.trim().toLowerCase(),password=$a('ptsAdminPassword').value;
+    if(email!==ADMIN_EMAIL){authStatus('Bu ekran yalnız tanımlı yönetici hesabına açıktır.',true);return;}
+    if(!password){authStatus('Şifreni gir.',true);return;}
+    $a('ptsAdminSignIn').disabled=true;authStatus('Giriş denetleniyor…');
+    try{await loadFirebase();const c=await adminAuth.signInWithEmailAndPassword(email,password);await showDashboard(c.user);}
+    catch(e){authStatus(e.code==='auth/operation-not-allowed'?'Firebase Console’da Authentication > Sign-in method bölümünden Email/Password yöntemini etkinleştir.':e.code==='auth/invalid-credential'?'Giriş bilgileri geçersiz. Hesabın yoksa “Yönetici hesabı oluştur” seçeneğini kullan.':(e.message||'Giriş başarısız.'),true);}
+    finally{$a('ptsAdminSignIn').disabled=false;}
+  }
+  async function signUp(){
+    const email=$a('ptsAdminEmail').value.trim().toLowerCase(),password=$a('ptsAdminPassword').value;
+    if(email!==ADMIN_EMAIL){authStatus('Bu ekran yalnız tanımlı yönetici hesabına açıktır.',true);return;}
+    if(password.length<10){authStatus('En az 10 karakterli bir şifre belirle.',true);return;}
+    $a('ptsAdminSignUp').disabled=true;authStatus('Yönetici hesabı oluşturuluyor…');
+    try{await loadFirebase();const c=await adminAuth.createUserWithEmailAndPassword(email,password);await c.user.sendEmailVerification();await adminAuth.signOut();authStatus('Doğrulama bağlantısını e-postana gönderdim. Bağlantıyı açtıktan sonra giriş yap.',false);}
+    catch(e){authStatus(e.code==='auth/operation-not-allowed'?'Firebase Console’da Authentication > Sign-in method bölümünden Email/Password yöntemini etkinleştir.':e.code==='auth/email-already-in-use'?'Bu e-posta için hesap zaten var; giriş yap veya Firebase Auth’dan parola sıfırlama kullan.':(e.message||'Hesap oluşturulamadı.'),true);}
+    finally{$a('ptsAdminSignUp').disabled=false;}
+  }
+  $a('ptsAdminClose').onclick=closeAdmin;modal.addEventListener('click',e=>{if(e.target===modal)closeAdmin();});
+  $a('ptsAdminSignIn').onclick=signIn;$a('ptsAdminSignUp').onclick=signUp;$a('ptsAdminRefresh').onclick=refreshRows;
+  $a('ptsAdminSignOut').onclick=async()=>{if(adminAuth)await adminAuth.signOut();dash.style.display='none';loginBox.style.display='block';$a('ptsAdminPassword').value='';authStatus('Oturum kapatıldı.');};
+  document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==='a'){e.preventDefault();openAdmin();}if(e.key==='Escape'&&modal.style.display==='block')closeAdmin();});
+  document.querySelector('.pts-logo')?.addEventListener('click',()=>{logoClicks++;clearTimeout(logoClickTimer);logoClickTimer=setTimeout(()=>logoClicks=0,1800);if(logoClicks>=5){logoClicks=0;openAdmin();}});
+})();
 </script>
 </body>
 </html>
